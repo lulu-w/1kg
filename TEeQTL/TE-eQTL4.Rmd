@@ -1,0 +1,150 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE, message = FALSE, warning = FALSE)
+```
+
+---
+title: "TE eQTL"
+author: "Lu Wang"
+date: "Tuesday, December 09, 2014"
+output: html_document
+---
+
+
+```{r}
+source("function.R")
+set.seed(12345)
+```
+
+```{r cache = TRUE}
+SNP_file_name = "./input/snps.txt"
+snps_location_file_name = "./input/snploc.txt"
+expression_file_name = "./input/geneExp.txt"
+gene_location_file_name = "./input/geneloc.txt"
+covariates_file_name = "./input/covariates.txt"
+
+snps <- read.table(SNP_file_name, header = T, stringsAsFactors = F)
+snploc <- read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+geneExp <- read.table(expression_file_name, header = T, stringsAsFactors = F)
+geneloc <- read.table(gene_location_file_name, header = T, stringsAsFactors = F)
+covar <- read.table(covariates_file_name, header = T, stringsAsFactors = F)
+
+#normGeneExp <- read.table(normalized_expression_file_name, header = T, stringsAsFactors = F)
+```
+
+## Breakdown by Population
+
+```{r}
+# Covariates
+pop.labs = c("GBR", "FIN", "CEU", "YRI", "TSI")
+rownames(covar) = covar$id
+values = grep("id", colnames(covar), invert = T)
+df <- as.data.frame(t(covar[, values]))
+par(cex = 0.7)
+barplot(table(factor(df$population, levels = 1:5, labels = pop.labs)), xlab = "Population", ylab = "Number of Individuals")
+df$group = as.factor(df$population)
+levels(df$group) = c("EUR", "EUR", "EUR", "YRI", "EUR")
+df = data.frame(sample = rownames(df), df)
+covar2 = df
+```
+
+```{r fig.width = 3}
+
+# Merge to EUR
+par(cex = 0.7)
+barplot(table(df$group), xlab = "Population", ylab = "Number of Individuals", col = c("steelblue", "salmon"))
+```
+
+## Distribution of Gene Expression 
+
+```{r plotExpressionDensity}
+library(reshape)
+library(ggplot2)
+
+mdf <- melt(geneExp[, values[1:100]])
+colnames(mdf) = c("sample", "expression")
+
+ggplot(mdf) + geom_density(aes(x = expression, col = sample)) + theme_bw() + theme(panel.grid = element_blank(), legend.position = "none")
+
+ggplot(mdf) + geom_density(aes(x = expression, col = sample)) + theme_bw() + coord_cartesian(xlim = c(-100, 500)) + theme(panel.grid = element_blank(), legend.position = "none")
+
+```
+
+
+
+## Distribution of Allele Frequency
+
+```{r cache = TRUE}
+
+msnps <- as.matrix(snps[, grep("id", names(snps), invert = T)])
+rownames(msnps) <- as.character(snps[, grep("id", names(snps))])
+
+res <- apply(msnps, 1, table)
+res1 <- sapply(res, getAF)
+```
+
+```{r}
+
+hist(res1, breaks = 100, col = "steelblue", border = NA, main = "", xlab = "Allele Frequency")
+af.df <- data.frame(names(res1), res1)
+names(af.df) = c("id", "af")
+af.df$id = as.character(af.df$id)
+rm(res1)
+```
+
+
+
+
+
+```{r}
+library(dplyr)
+af.cut = 0.05
+keep = which(af.df$af > af.cut)
+res = snps[keep, ]
+res1 = snploc[keep, ]
+write.table(res, "./input/temp.snps", quote = F, row.names = F, col.names = F, sep = "\t")
+write.table(res1, "./input/temp.snploc", quote = F, row.names = F, col.names = F, sep = "\t")
+```
+
+## TE-Gene Association after Applying AF cutoff = `r af.cut`
+
+```{r cache = FALSE, results='hide'}
+SNP_file_name = "./input/temp.snps"
+snps_location_file_name = "./input/temp.snploc"
+
+meq <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, "qqplot", verbose = F)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meq)
+```
+
+
+```{r}
+alleqtl = meq$all$eqtls
+
+top.n = 5000
+
+res <- sapply(1:top.n, function(x) getChisq(alleqtl[x, ], verbose = F) )
+```
+
+```{r fig.width = 5}
+temp = data.frame(alleqtl[1:top.n, ], chisq.p = res)
+
+temp = temp[order(temp$pvalue, temp$chisq.p), ]
+
+
+top.n = 100
+
+lapply(1:top.n, function(x) ploteqtl(temp[x, ], by = "population"))
+```
+
+
+
+
+
+
+
+
+
