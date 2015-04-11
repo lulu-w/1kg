@@ -517,7 +517,7 @@ par(cex = 0.7)
 plot(-log10(meq.all.mdf$pvalue), -log10(meq.all.mdf$chisq.p),xlab="Association", ylab="Divergence", main="", pch = 16, col = as.character(col), bty = "n")
 
 legend("topright", c(levels(labels), "Bonferroni Cutoff", "FDR Cutoff"), pch = 16, col=c(levels(col), "darkgrey", "orange"))
-abline(v=-log10(4.7e-7), col = "orange", lty=2)
+abline(v=-log10(4.71e-7), col = "orange", lty=2)
 abline(v=-log10(1e-10), col = "darkgrey", lty=2)
 abline(h=-log10(1/nrow(chi.test.df)), col = "darkgrey", lty=2)
 ```
@@ -659,10 +659,50 @@ rm(chipseq.df)
 
 #all.tf = merge(tf.gene.df, meq.all, by.x = "symbol", by.y = "name")
 #all.target = merge(trans.tf, meq.all.tra, by.x = "target", by.y = "name")
+
 ```
 
 
-### Figure 4A Individual TF and Target Expression
+### Figure 4A Population-Specific TE eQTL
+
+
+```{r}
+association.fdr.cut = 4.71e-7
+divergence.fdr.cut = 0.03455059
+
+
+sel.pairs = meq.all.mdf[which(meq.all.mdf$pvalue < association.fdr.cut & meq.all.mdf$chisq.p < divergence.fdr.cut), ]
+
+#sel.pairs = sel.pairs[order(sel.pairs$chisq.p), ]
+sel.pairs = sel.pairs[order(sel.pairs$pvalue), ]
+
+#write.csv(sel.pairs, "population.specific.csv", row.names = F, quote = F)
+sel.pop.specific <- read.csv("./input/population.specific.eQTL.gene.selected.csv", header = T)
+sel.pop.specific <- sel.pairs[which(sel.pairs$name %in% sel.pop.specific$Gene), ]
+sel.pop.specific <- sel.pop.specific[order(sel.pop.specific$name), ]
+
+top.n = nrow(sel.pop.specific)
+lapply(1:top.n, function(x) ploteqtl(sel.pop.specific[x, ], by = "group"))
+
+top.n = 100
+#pdf("population.specific.pdf", height = 5, width = 5)
+#lapply(1:top.n, function(x) ploteqtl(sel.pairs[x, ], by = "group"))
+#dev.off()
+
+sel.pairs = split(sel.pairs, f = sel.pairs$snps)
+sel.pairs.hm <- which(sapply(sel.pairs, nrow) > 5 )
+
+pdf("population.specific.TE-gene.pdf", height = 5, width = 5)
+res3 <- lapply(sel.pairs[sel.pairs.hm], extractExpression)
+res <- mapply(myHeatmap, res3, title = names(res3))
+dev.off()
+```
+
+### Figure 4B Population-Specific TE Regulation
+
+
+
+### Figure 5A Individual TF and Target Expression
 
 ```{r}
 sel = data.frame(tf = c("MXI1", "ELF1", "JUND", "JUN", "TP63", "TCF7L2"),
@@ -674,23 +714,99 @@ lapply(1:nrow(sel.df), function(x) ploteqtl(sel.df[x, ], by = "none"))
 
 ```
 
-### Figure 4B TF target gene expression
+### Figure 5B TF target gene expression
 
 ```{r}
 sel.tar = split(cis.tf.trans.target, f = cis.tf.trans.target$symbol)
+
 res = lapply(sel.tar, function(x) { res = x[,c(1, grep("y$", colnames(x), perl = T))]
                                     colnames(res) = gsub("\\.y$", "", colnames(res), perl = T)
                                   return(res)})
 
+res1 = lapply(res, extractTarget)
 
-hmcol = colorRampPalette(c("green","green","green","green","green","green","green","green","green","green","green","green","green", "darkgreen", "black","darkred", "red", "red", "red", "red", "red", "red", "red", "red", "red", "red", "red", "red", "red"))(100)
+#pdf("TE-targets-heatmap.pdf", height = 10, width = 6)
+res <- mapply(myHeatmap, res1, title = names(res1))
+#dev.off()
+
+```
+
+### Figure 5C All population circos plot with TE-TF-target gene associations
+
+```{r}
+# te.assoc.p = meq.all.mdf[, c("snps", "pvalue")]
+# te.chisq.p = meq.all.mdf[, c("snps", "chisq.p")]
+# te.assoc.p = te.assoc.p[order(te.assoc.p$pvalue), ]
+# te.chisq.p = te.chisq.p[order(te.chisq.p$chisq.p), ]
+# te.assoc.p = te.assoc.p[!duplicated(te.assoc.p$snps), ]
+# te.chisq.p = te.chisq.p[!duplicated(te.chisq.p$snps), ]
+
+te.assoc.p = read.csv("meq.all.uniqueTE.csv", header = T)
+te.assoc.p = te.assoc.p[, c("snps", "pvalue")]
+
+te.assoc.track = merge(te.assoc.p, snploc, by.x = "snps", by.y = "snp")
+te.assoc.export = te.assoc.track
+# te.chisq.track = merge(snploc, te.chisq.p, by.x = "snp", by.y = "snps")
+
+chrNum = length(levels(factor(te.assoc.track$chr)))
+te.assoc.track$pos = round(te.assoc.track$pos/10000, 0)
+te.assoc.track$group = "odd"
+te.assoc.track$snpgroup = te.assoc.track$snps
+te.assoc.track$snpgroup = gsub("_umary_.*$", "", te.assoc.track$snpgroup, perl = T )
+te.assoc.track$col = paste0(te.assoc.track$group, te.assoc.track$snpgroup)
+
+for (i in 1:chrNum){ 
+  ndx <- which(te.assoc.track$chr==paste0("chr", i))
+  lstMrk <- max(te.assoc.track[ndx, "pos"])
+  if (i < chrNum) ndx2 <- which(te.assoc.track[, "chr"]==paste0("chr", i+1))
+  if (i < chrNum) te.assoc.track[ndx2, "pos"] <- te.assoc.track[ndx2, "pos"] + lstMrk
+  if (i %% 2 == 0) te.assoc.track$group[ndx] = "even"
+
+}
 
 
-#res1 = extractTarget(res[[1]], te = sel$te[which(sel$tf == names(res)[1])])
-res1 = mapply(extractTarget, res, te = sel$te[order(sel$tf)])
+#Manhattan plot for TE association p-values
 
-lapply(res1, plotHeatmap)
+ggplot(te.assoc.track, aes(x = pos, y = -log10(pvalue))) + geom_point(aes(color = factor(chr, levels = paste0("chr", 1:chrNum)))) + scale_color_manual(values = rep(c("black", "red"), chrNum/2))
 
+
+ggplot(te.assoc.track, aes(x = pos, y = -log10(pvalue))) + geom_point(aes(color = factor(col))) + scale_color_manual(values = rep(c("blue", "red", "green", "darkblue", "darkred", "darkgreen"), chrNum/2))
+
+
+ggplot(te.assoc.track, aes(x = pos, y = -log10(pvalue))) + geom_point(aes(shape = factor(snpgroup), color = factor(chr, levels = paste0("chr", 1:chrNum)))) + scale_color_manual(values = rep(c("black", "red"), chrNum/2))
+
+#Export TE location and p-values
+
+te.assoc.export$end = te.assoc.export$pos+1
+te.assoc.export = te.assoc.export[, c("chr", "pos", "end", "pvalue")]
+te.assoc.export$chr = gsub("chr", "hs", te.assoc.export$chr)
+te.assoc.export$pvalue = -log10(te.assoc.export$pvalue)
+write.table(te.assoc.export, "te.assoc.export.txt", sep = "\t", row.names = F, col.names = F, quote = F)
+```
+
+```{r circosPlotLinks}
+consistent.tar = read.csv("./input/TE-consistent-targets-from-heatmap.csv", header = T)
+idx = which(cis.tf.trans.target$target %in% consistent.tar$Target)
+
+tf.target.pair = cis.tf.trans.target[idx, c("gene.x", "gene.y")]
+colnames(tf.target.pair) = c("tf", "target")
+tf.target.track = merge(tf.target.pair, geneloc, by.x = "tf", by.y = "id")
+tf.target.track = merge(tf.target.track, geneloc, by.x = "target", by.y = "id")
+tf.target.track = tf.target.track[, c("chr.x", "s1.x", "s2.x", "chr.y", "s1.y", "s2.y")]
+colnames(tf.target.track) = NA
+
+te.tf.pair = cis.tf.trans.target[, c("snps.x", "gene.x")]
+te.tf.pair = te.tf.pair[!duplicated(te.tf.pair$gene.x), ]
+te.tf.track = merge(te.tf.pair, snploc, by.x = "snps.x", by.y = "snp")
+te.tf.track = merge(te.tf.track, geneloc, by.x = "gene.x", by.y = "id")
+te.tf.track$pos2 = te.tf.track$pos+1
+te.tf.track = te.tf.track[, c("chr.x", "pos", "pos2", "chr.y", "s1", "s2")]
+colnames(te.tf.track) = NA
+
+links = rbind(tf.target.track, te.tf.track)
+links[, 1] = gsub("chr", "hs", links[, 1])
+links[, 4] = gsub("chr", "hs", links[, 4])
+write.table(links, "links.track.txt", row.names = F, col.names = F, quote = F)
 
 ```
 

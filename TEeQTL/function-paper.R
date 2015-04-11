@@ -347,7 +347,7 @@ checkExp <- function(x, verbose = F){
 
 
 
-ploteqtl <- function(x, by = "genotype" ){
+ploteqtl <- function(x, by = "group"){
   mdf = checkExp(x)
   
   sid = as.character(x$snps)
@@ -364,9 +364,15 @@ ploteqtl <- function(x, by = "genotype" ){
   }else if(by == "gender"){
     ggplot(mdf, aes(genotype, expression)) + geom_boxplot() + geom_point(size = 4, alpha = 1/2, position = position_jitter(width = 0.2), aes(col = gender)) + labs(title = paste(sid, "vs", gname)) + xlab(paste("P=", pval, " Chisq.P=", chisq.p)) + theme_bw() + theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank())
   }else if(by == "group"){
-    ggplot(mdf, aes(genotype, expression)) + geom_boxplot() + geom_point(size = 4, alpha = 1/2, position = position_jitter(width = 0.2), aes(col = group)) + labs(title = paste(sid, "vs", gname)) + xlab(paste("P=", pval, " Chisq.P=", chisq.p)) + theme_bw() + theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank()) #+ scale_fill_manual()
+    g <- ggplot(mdf, aes(genotype, expression)) + geom_point(size = 3.5, alpha = 1/2, position = position_jitter(width = 0.2), aes(col = factor(group))) + geom_boxplot(alpha = 1/2, outlier.size = NA) + labs(title = paste(sid, "vs", gname)) + xlab(paste("P=", pval, " Chisq.P=", chisq.p)) + theme_bw() + theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank()) + scale_color_manual(values = c("red", "blue"))
+    print(g)
+    slices <- table(mdf$genotype, mdf$group)
+    par(mfrow=c(1,3))
+    for(i in 1:nrow(slices)){
+      pie(slices[i, ], col = c("red", "blue"), labels = "", border = NA)
+    }   
   }else if(by == "none"){
-    ggplot(mdf, aes(genotype, expression)) + geom_point(size = 3.5, alpha = 1/2, position = position_jitter(width = 0.2), col = "steelblue") + geom_boxplot(alpha = 1/4) + labs(title = paste(sid, "vs", gname)) + xlab(paste("P=", pval, " Chisq.P=", chisq.p)) + theme_bw() + theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank()) 
+    ggplot(mdf, aes(genotype, expression)) + geom_point(size = 3.5, alpha = 1/2, position = position_jitter(width = 0.2), col = "steelblue") + geom_boxplot(alpha = 1/2, outlier.size = NA) + labs(title = paste(sid, "vs", gname)) + xlab(paste("P=", pval, " Chisq.P=", chisq.p)) + theme_bw() + theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank()) 
   }else{ print("No such feature for individuals") }
 }
 
@@ -428,50 +434,144 @@ fitMDS <- function(x) {
 }
 
 
-plotHeatmap <- function(data){
-  require(gplots)
-  #mat = as.matrix(valCols(data))
-  mat = as.matrix(data)
-#   log.mat = log2(mat + abs(min(mat)) + 1)
-#   mat = log.mat
+extractExpression <- function(x, use.mean = T, show.group = T) {
+  te = x$snps[1]
+  gene.info = x[, c("name", "gene")]
+  colnames(gene.info) = c("name", "id")
   
-  zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
-  #require(ggplot2)
+  expressions = as.matrix(valCols(geneExp[which(geneExp$id %in% gene.info$id),]))
   
-#   zmat1 <- zmat[, 1:2]
-#   zmat2 <- zmat[, 3:4]
-#   med1 <- median(zmat1)
-#   med2 <- median(zmat2)
-#   zmat1 = zmat1 - med1
-#   zmat2 = zmat2 - med2
-#   zmat = cbind(zmat1, zmat2)
+  genotypes = valCols(snps[snps$id == te, ])
   
-  heatmap.2(zmat, 
-            col = hmcol,
-            #Rowv = FALSE,
-            Colv = FALSE,
-            trace = "none", 
-            scale = "none",
-            #labRow = data[, grep("Symbol", colnames(data))],
-            labRow = "",
-            margin = c(15, 6),
-            keysize = 1.5,
-            density.info = "none",
-            key.title = "z-score",
-            key.xlab = "z-score",
-            main = "")
+  indiv = unlist(genotypes)
+  type0 = names(indiv)[grep(0, indiv)]
+  type1 = names(indiv)[grep(1, indiv)]
+  type2 = names(indiv)[grep(2, indiv)]
+  
+  if(use.mean){
+    exp0 = rowMeans(expressions[, type0])
+    exp1 = rowMeans(expressions[, type1])
+    if(length(type2) <= 1){
+      exp2 = expressions[, type2]
+    }else{
+      exp2 = rowMeans(expressions[, type2])
+    }
+  }else{
+    exp0 = expressions[, type0]
+    colnames(exp0) = paste0(colnames(exp0), "_____0")
+    exp1 = expressions[, type1]
+    colnames(exp1) = paste0(colnames(exp1), "_____1")
+    exp2 = expressions[, type2]
+    if(length(type2) > 1){
+      colnames(exp2) = paste0(colnames(exp2), "_____2")
+    }
+  }
+  
+  
+  if(length(type2)>0) {
+    res = data.frame(exp0, exp1, exp2)
+  } else {
+    res = data.frame(exp0, exp1)
+  }
+  
+  #Convert ensembl ID to hgnc Symbol
+  id.map = id.map.u
+  rownames(id.map) = id.map$gene
+  id.map = id.map[rownames(res), ]
+  rownames(res) = id.map$name
+  
+  #population group pie chart
+  if(show.group){
+    mdf = checkExp(x[1,])
+    slices <- table(mdf$genotype, mdf$group)
+    par(mfrow=c(1,3))
+    for(i in 1:nrow(slices)){
+      pie(slices[i, ], col = c("red", "blue"), labels = "", border = NA)
+    }
+    mtext(te)
+  }
+    
+  
+  return(res)
 }
 
-extractTarget <- function(x, te) {
-  gene.info = data.frame(id = x$gene, symbols = x$target)
 
-  expressions = valCols(geneExp[which(geneExp$id %in% gene.info$id),])
+extractTarget <- function(x) {
+  te = x$snps[1]
+  gene.info = x[, c("target", "gene")]
+  colnames(gene.info) = c("name", "id")
+
+  expressions = as.matrix(valCols(geneExp[which(geneExp$id %in% gene.info$id),]))
  
   genotypes = valCols(snps[snps$id == te, ])
   
   indiv = unlist(genotypes)
-  indiv = colnames(genotypes)[order(indiv)]
-  expressions = expressions[, indiv] 
+  type0 = names(indiv)[grep(0, indiv)]
+  type1 = names(indiv)[grep(1, indiv)]
+  type2 = names(indiv)[grep(2, indiv)]
   
-  return(expressions)
+  
+  exp0 = rowMeans(expressions[, type0])
+  exp1 = rowMeans(expressions[, type1])
+  exp2 = rowMeans(expressions[, type2])
+  
+  if(length(type2)>0) {
+    res = data.frame(exp0, exp1, exp2)
+  } else {
+    res = data.frame(exp0, exp1)
+  }
+  
+  #Convert ensembl ID to hgnc Symbol
+  id.map = id.map.u
+  rownames(id.map) = id.map$gene
+  id.map = id.map[rownames(res), ]
+  rownames(res) = id.map$name
+  
+  return(res)
 }
+
+
+zscale <- function(x){
+  x = as.matrix(x)
+  z = (x - rowMeans(x))/apply(x, 1, sd)
+}
+
+medScale <- function(x){
+  x = as.matrix(x)
+  z = x - rowMeans(x)
+}
+
+myHeatmap <- function(data, 
+                      scaled = T, 
+                      title = "", 
+                      hmcol = colorRampPalette(c("green", "darkgreen", "black","darkred", "red"))(100), 
+                      labCol = NULL
+                      ){
+  require(gplots)
+  
+  if(scaled){
+    if(ncol(data) > 2){
+      data = zscale(data)
+    }else{
+      #data = medScale(data)
+      data = medScale(data)
+    }
+  }else{
+    data = as.matrix(data)
+  }
+  
+  heatmap.2(data, 
+            col = hmcol,
+            Colv = FALSE,
+            trace = "none", 
+            scale = "none",
+            labRow = rownames(data),
+            labCol = labCol,
+            margin = c(10, 6),
+            keysize = 1.5,
+            density.info = "none",
+            key.title = "z-score",
+            key.xlab = "z-score",
+            main = title)
+}
+    
