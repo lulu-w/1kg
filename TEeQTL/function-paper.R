@@ -496,11 +496,14 @@ extractExpression <- function(x, use.mean = T, show.group = T) {
 }
 
 
-extractTarget <- function(x) {
+extractTarget <- function(x, isOriginal = F) {
   te = x$snps[1]
-  gene.info = x[, c("target", "gene")]
+  if(isOriginal){
+    gene.info = x[, c("name", "gene")]
+  } else {
+    gene.info = x[, c("target", "gene")]
+  }
   colnames(gene.info) = c("name", "id")
-
   expressions = as.matrix(valCols(geneExp[which(geneExp$id %in% gene.info$id),]))
  
   genotypes = valCols(snps[snps$id == te, ])
