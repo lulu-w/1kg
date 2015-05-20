@@ -577,4 +577,8 @@ myHeatmap <- function(data,
             key.xlab = "z-score",
             main = title)
 }
-    
+
+
+locateSNP <- function(snp){
+    snploc[which(snploc$snp==snp),]
+}

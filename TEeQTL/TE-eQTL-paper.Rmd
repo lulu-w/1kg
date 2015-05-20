@@ -715,6 +715,82 @@ dev.off()
 
 
 
+### Figure 4 Regional SNP-eQTL Association
+
+#### Locus 1: chr6:31,485,154 - 34,096,890
+
+```{r regionalAssociation}
+SNP_file_name = "./regionalAssociation/loc1/regsnps.txt"
+snps_location_file_name = "./regionalAssociation/loc1//regsnploc.txt"
+expression_file_name =  "./regionalAssociation/loc1//reggeneExp.txt"
+gene_location_file_name = "./regionalAssociation/loc1//reggeneloc.txt"
+covariates_file_name = "./input/covariates.txt"
+
+p.cut = 1e-2
+fdr.cut = 0.05
+
+id.map = read.csv("./input/ensemblGeneToGeneName-20150206.csv")
+id.map = id.map[, c("name", "gene")]
+id.map.u = id.map[!duplicated(id.map$gene), ]
+
+
+#Run Matrix eQTL
+loc1.meq.all <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "./output/loc1.regionalAssociation.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+
+loc1.meq.eqtls <- loc1.meq.all$all$eqtls
+```
+
+```{r fig.width=5}
+plot(loc1.meq.all)
+```
+
+
+```{r loc1Chi-squareTest, eval = F}
+# regsnps <- read.table(SNP_file_name, header = T, stringsAsFactors = F)
+# 
+# # Chi-square test for skewness of SNP presence in EUR vs YRI
+# chi.test.p <- apply(valCols(regsnps), 1, myChisq, expected = covar2)
+# chi.test.df <- data.frame(snps = regsnps$ID, chisq.p = chi.test.p)
+# chi.test.q <- p.adjust(chi.test.p, method = "BH")
+# chi.test.df$chisq.q = chi.test.q
+# 
+# loc1.meq.eqtls <- merge(loc1.meq.eqtls, chi.test.df, by.x = "snps", by.y = "snps")
+```
+
+
+```{r loc1Results}
+loc1.meq.eqtls = merge(loc1.meq.eqtls, id.map.u, by.x = "gene", by.y = "gene")
+loc1.meq.eqtls = loc1.meq.eqtls[order(loc1.meq.eqtls$pvalue), ]
+locus = loc1.meq.eqtls[, c("snps", "pvalue")]
+locus = locus[order(locus$snps, locus$pvalue), ]
+locus = locus[!duplicated(locus$snps), ]
+
+regsnpsloc <- read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+
+locus = merge(locus, regsnpsloc, by.x = "snps", by.y = "snp")
+locus = locus[, c(1, 4, 2)]
+names(locus) = c("SNP", "POS", "PVAL")
+rownames(locus) = locus[, 1]
+locus$TYPE="typed"
+
+source("./regionalAssociation/make.fancy.locus.plot.R")
+
+te <- meq.all.mdf[which(meq.all.mdf$snps=="ALU_umary_ALU_5072" & meq.all.mdf$name=="HLA-DRB5"), ]
+teloc <- snploc[which(snploc$snp=="ALU_umary_ALU_5072"), "pos"]
+te <- data.frame(SNP=te$snps, POS=teloc, PVAL=te$pvalue, TYPE="typed")
+rownames(te) = te$SNP
+
+locus1 = locus[which(locus$POS > 32489834 & locus$POS < 32689834), ]
+locus1 = rbind(locus1, te)
+
+make.fancy.locus.plot("ALU_umary_ALU_5072", "HLA-DRB5 Locus", "6", locus1, 68, te$PVAL)
+
+#make.fancy.locus.plot("rs147014445", "", "9", locus, 17, 3.533956e-17)
+```
+
+
+
+
 ### Figure 5A Individual TF and Target Expression
 
 ```{r}
