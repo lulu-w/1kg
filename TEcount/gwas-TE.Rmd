@@ -1,0 +1,104 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE, message = FALSE, warning = FALSE)
+```
+
+---
+title: "GWAS with polyTEs as phenotypes"
+author: "Lu Wang"
+output: html_document
+---
+
+
+```{r}
+library(data.table)
+options(stringsAsFactors = F)
+source("gwas-TE-functions.R")
+
+c5 = c("#3953A4", "#6ABD45", "#ED2124", "#FAA41A", "#D16A27")
+t5 = col2alpha(c5, alpha=0.2)
+names(c5) = c("African", "American", "Asian", "European", "Indian")
+```
+
+```{r}
+####################
+# Read data
+####################
+# Sample population info
+sample_info=read.table("./analysis_input/sampleInfo.txt", header=T)
+# TE genotype
+teGeno = fread("./data/LavaData/allTE.tsv")
+
+
+teSel = 20
+
+#######################
+# File pre-processing
+#######################
+sample_info_pop = split(sample_info, f=sample_info$group)
+pop_individuals = lapply(sample_info_pop, function(d){ d$id })
+
+set.seed(54321)
+teSel = round(runif(teSel)*nrow(teGeno))
+teGeno = teGeno[teSel, ]
+teLoc = teGeno[, 1:3, with = F]
+teGeno = teGeno[, c(3,6:ncol(teGeno)), with = F]
+teGeno = as.data.frame(teGeno)
+
+pop_teGeno = lapply(pop_individuals, function(d){
+  res = teGeno[, d]
+  rownames(res) = teGeno$ID
+  res = t(res) + 1
+  res = data.frame(FID = rownames(res), IID = rownames(res), res)
+  return(res)
+})
+
+
+#######################
+# write plink association input file
+#######################
+
+# mapply(write.table, pop_teGeno, 
+#        file = paste0("./bcf_chr22/polyTE_genotype_", names(pop_teGeno),".txt"), 
+#        quote = rep(FALSE, length(pop_teGeno)), 
+#        row.names = rep(FALSE, length(pop_teGeno)))
+
+```
+
+### Asian population
+
+VCF files from 1kg project were first converted to plink format with MAF filter set to be 0.05
+
+```
+plink2 --vcf All.chr.asn.vcf.gz --maf 0.05 --recode --make-bed --out ./plink_assoc/All.chr.asn
+```
+
+
+After running association with plink2 using the following command
+
+```
+plink2 --bfile All.chr.asn --pheno ../polyTE_genotype_EAS.txt --all-pheno  --assoc --allow-no-sex --pfilter 1e-3 --out All.chr.asn
+```
+
+```{r}
+assocFiles = list.files("./bcf_concat/plink_assoc/asn/")
+assocTEnames = gsub("All.chr.asn.", "", assocFiles)
+assocTEnames = gsub(".[q]?assoc", "", assocTEnames)
+assocTEloc = teLoc[which(teLoc$ID %in% assocTEnames),]
+assocTEloc = paste(assocTEloc$ID, "at chr", assocTEloc$CHROM, assocTEloc$POS)
+
+
+mapply(function(data, title){
+    assoc = read.table(paste0("./bcf_concat/plink_assoc/asn/", data), header = T)
+    assoc = assoc[!is.na(assoc$P),]
+    if(nrow(assoc)==0){
+        print(paste0("No association found in ", data))
+    }else{
+        names(assoc) = gsub("BP", "pos", names(assoc))
+        names(assoc) = gsub("^P$", "pval", names(assoc))
+        names(assoc) = tolower(names(assoc))
+        plotManhattan(assoc, col = c("darkgrey", paste(c5[3])), title = title)
+    }
+}, assocFiles, assocTEloc)
+
+```

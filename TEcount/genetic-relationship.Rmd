@@ -1,0 +1,76 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE, message = FALSE, warning = FALSE)
+```
+
+---
+title: "Genetic Relationship"
+author: "Lu Wang"
+output: html_document
+---
+
+
+```{r}
+library(data.table)
+options(stringsAsFactors = F)
+source("genetic-relationship-functions.R")
+
+####################
+# Read data
+####################
+
+# Read genetic relationship matrix (GRM)
+grm = fread("./bcf_concat/all.chr.grm.rel")
+grm_id = read.delim("bcf_concat/all.chr.grm.rel.id", header = F)
+
+
+# Read TE count as phenotype and calculate phenotype distance
+teCount = read.delim("./abilbeast_input/presenceExp.txt", header = T)
+sampleInfo = read.delim("./abilbeast_input/sampleInfo.txt", header = T)
+
+#######################
+# File pre-processing
+#######################
+
+# Genetic distances
+grm_id = grm_id$V1
+setnames(grm, grm_id)
+```
+
+The regression of the phenotypical distance to genetic relationship.
+
+* The genetic relationship matrix is calculated using the plink2 (https://www.cog-genomics.org/plink2/distance#read_dists) based on all SNPs from 1kg project.
+
+* The phenotypical distance is the Euclidian distance based on all polyTEs
+
+```{r fig.width = 4, fig.height = 4, results = 'hide'}
+# select samples to compare
+popList = split(sampleInfo, f = as.factor(sampleInfo$population))
+
+
+lapply(names(popList), function(d){
+  res = getGenoPhenoMatrix(pop_sel = d, te_type = "all")
+  colormatrix = getMatrixColors(gdist = res[[1]])
+  plotRegression(pop_sel = d, gdist=res$gdist, pdist=res$pdist, color = colormatrix[[1]], label = colormatrix[[2]], alpha = 0.2)
+  
+})
+
+```
+
+#### Genetic relationship by population groups
+
+```{r fig.width = 4, fig.height = 4, results = 'hide'}
+# select samples to compare
+popList = split(sampleInfo, f = as.factor(sampleInfo$group))
+popList = lapply(popList, function(d){
+    d = as.character(unique(d$population))
+})
+
+lapply(popList, function(d){
+  res = getGenoPhenoMatrix(pop_sel = d, te_type = "all")
+  colormatrix = getMatrixColors(gdist = res[[1]])
+  plotRegression(pop_sel = d, gdist=res$gdist, pdist=res$pdist, color = colormatrix[[1]], label = colormatrix[[2]], alpha = 0.2)
+  
+})
+
+```
