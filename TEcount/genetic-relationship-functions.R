@@ -6,6 +6,10 @@ getGenoPhenoMatrix = function(pop_sel, te_type){
     counts = unlist(teCount[which(teCount$id == te_type), pop_sel_id])
     delta_y = as.matrix(dist(as.matrix(counts), diag = T))
     
+    # Export pheno as .phen file for gcta
+    # df = data.frame(names(counts), counts)
+    # write.table(df, "./bcf_concat/AFR.phen", col.names = F, sep = "\t", quote = F)
+    
     # selected genetic distances
     sel = match(pop_sel_id, names(grm)) # want to sort names(grm) as pop_sel_id, i.e. find id in pop_sel_id one by one in names(grm), so use it as value to match against
     if(sum(is.na(sel)) > 0){

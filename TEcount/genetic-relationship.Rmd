@@ -10,7 +10,75 @@ output: html_document
 ---
 
 
+```{r eval = F}
+library(data.table)
+options(stringsAsFactors = F)
+source("genetic-relationship-functions.R")
+
+
+sampleInfo = read.delim("./abilbeast_input/sampleInfo.txt", header = T)
+
+```
+
+
+
+## The regression of the phenotypical distance to genetic distances
+
+Analysis | Genetic Markers | Phenotypical Markers
+----|----|----
+1 | All Common SNPs | Counts of all polyTEs
+2 | All genome-wide significant common SNPs (associated with polyTE counts) | Counts of all polyTEs
+3 | All common SNPs from $\text{chr}_i$ | Sum of counts of all polyTEs from $\text{chr}_j, j \in [1, 22], j \neq i$
+
+
+## 1
+
+* The genetic relationship matrix is calculated using the plink2 (https://www.cog-genomics.org/plink2/distance#read_dists) based on all common SNPs (MAF>0.05) from 1kg project.
+
+```
+# AFR common SNPs
+plink2 --vcf afr.snp.maf05.vcf.gz --make-rel square gz --out afr.snp.maf05.rel
+
+```
+
+* The phenotypical distance is the Euclidian distance based on all polyTEs
+
 ```{r}
+# Read TE count as phenotype and calculate phenotype distance
+teCount = read.delim("./abilbeast_input/presenceExp.txt", header = T)
+```
+
+* The variance explained by all SNPs using REML (restricted maximum likelihood) analysis. 
+
+```
+# AFR common SNPs
+plink2 --vcf afr.snp.maf05.vcf.gz --make-grm-bin --out afr.snp.maf05
+gcta64 --reml --grm afr.snp.maf05  --pheno AFR.phen  --out AFR.snps.maf05
+```
+
+
+## 2
+
+* The genetic relationship matrix is calculated using the plink2 (https://www.cog-genomics.org/plink2/distance#read_dists) based on all common SNPs (MAF>0.05) from 1kg project.
+
+```
+# AFR selected SNPs w/ -log10 P > 8
+plink2 --vcf afr.snp.maf05.vcf.gz --extract AFR_significant_snps.txt --make-rel square gz --out afr.snp.selected.maf05.rel
+
+```
+
+* The phenotypical distance is the Euclidian distance based on all polyTEs
+
+* The variance explained by all SNPs using REML (restricted maximum likelihood) analysis. 
+
+```
+# AFR selected SNPs w/ -log10 P > 8
+plink2 --vcf afr.snp.maf05.vcf.gz --extract AFR_significant_snps.txt --make-grm-bin --out afr.snp.selected.maf05
+gcta64 --reml --reml-no-constrain --grm afr.snp.maf05  --pheno AFR.phen  --out AFR.snps.selected.maf05
+```
+
+
+```{r eval = F}
 library(data.table)
 options(stringsAsFactors = F)
 source("genetic-relationship-functions.R")
@@ -20,13 +88,10 @@ source("genetic-relationship-functions.R")
 ####################
 
 # Read genetic relationship matrix (GRM)
-grm = fread("./bcf_concat/all.chr.grm.rel")
-grm_id = read.delim("bcf_concat/all.chr.grm.rel.id", header = F)
-
-
-# Read TE count as phenotype and calculate phenotype distance
-teCount = read.delim("./abilbeast_input/presenceExp.txt", header = T)
-sampleInfo = read.delim("./abilbeast_input/sampleInfo.txt", header = T)
+grm = fread("./analysis_input/AFR/afr.snp.selected.maf05.rel.rel")
+#grm = fread("./bcf_concat/all.chr.grm.rel")
+grm_id = read.delim("./analysis_input/AFR/afr.snp.selected.maf05.rel.rel.id", header = F)
+#grm_id = read.delim("bcf_concat/all.chr.grm.rel.id", header = F)
 
 #######################
 # File pre-processing
@@ -37,15 +102,15 @@ grm_id = grm_id$V1
 setnames(grm, grm_id)
 ```
 
-The regression of the phenotypical distance to genetic relationship.
+#### Genetic relationship by populations
 
-* The genetic relationship matrix is calculated using the plink2 (https://www.cog-genomics.org/plink2/distance#read_dists) based on all SNPs from 1kg project.
-
-* The phenotypical distance is the Euclidian distance based on all polyTEs
-
-```{r fig.width = 4, fig.height = 4, results = 'hide'}
+```{r fig.width = 4, fig.height = 4, results = 'hide', eval = F}
 # select samples to compare
 popList = split(sampleInfo, f = as.factor(sampleInfo$population))
+
+#####################
+#
+# Need to pass teCounts as a variable to getGenoPhenoMatrix
 
 
 lapply(names(popList), function(d){
@@ -59,7 +124,7 @@ lapply(names(popList), function(d){
 
 #### Genetic relationship by population groups
 
-```{r fig.width = 4, fig.height = 4, results = 'hide'}
+```{r fig.width = 4, fig.height = 4, results = 'hide', eval = F}
 # select samples to compare
 popList = split(sampleInfo, f = as.factor(sampleInfo$group))
 popList = lapply(popList, function(d){

@@ -1,6 +1,6 @@
 loadPvals <- function(pvalfile){
   require(data.table)
-  pvals = fread(pvalfile, header = F)
+  pvals = fread(pvalfile, header = T)
   setnames(pvals, c("snp", "te", "statistic", "pval", "FDR", "beta", "chr", "pos"))
   pvals = as.data.frame(pvals)
   pvals = pvals[, c("snp", "pval", "chr", "pos", "te")]
@@ -9,7 +9,7 @@ loadPvals <- function(pvalfile){
 
 myQQplot = function(pvalfile, permutedfile, n_probs=100000, p_cut=0.01, col="black", title=""){
   require(data.table)
-  pvals = fread(pvalfile, header = F)
+  pvals = fread(pvalfile, header = T)
   ppvals = fread(permutedfile, header = F)
   setnames(pvals, c("snp", "te", "statistic", "pval", "FDR", "beta"))
   setnames(ppvals, c("snp", "te", "statistic", "pval", "FDR", "beta"))
@@ -37,7 +37,7 @@ myQQplot = function(pvalfile, permutedfile, n_probs=100000, p_cut=0.01, col="bla
   min_obs_q=round(obs_q[1])
   max_obs_q=round(obs_q[length(obs_q)])
   
-  par(cex=0.7)
+  #par(cex=0.7)
   tick_space=10
   plot(exp_q, obs_q, col=col, xlab=expression(-log[10]*(Expected)), ylab=expression(-log[10]*(Observed)), main=pop_name, ylim=c(min_obs_q, (max_obs_q %/% tick_space + 1)*tick_space), xlim=c(min_exp_q, max_exp_q+1), axes=F)
   points(exp_q, pobs_q, col="darkgrey")
@@ -55,7 +55,7 @@ myQQplot = function(pvalfile, permutedfile, n_probs=100000, p_cut=0.01, col="bla
 }
 
 
-plotManhattan <- function(pvals, col=c("black", "red"), title="", highlight=NA, by="none"){  
+plotManhattan <- function(pvals, col=c("black", "red"), title="", highlight=NA, by="none", ylimit = 70){  
   chrNum = length(levels(factor(pvals$chr)))
   pvals$pos = round(pvals$pos/10000, 0)
   pvals$group = "odd"
@@ -84,8 +84,10 @@ plotManhattan <- function(pvals, col=c("black", "red"), title="", highlight=NA, 
   if(is.na(highlight[1])){
       if(by=="none"){
         ggplot(pvals, aes(x = pos, y = -log10(pval))) + 
-          geom_point(aes(color = chr)) +
-          scale_color_manual(values = rep(col, chrNum/2), guide = F) + 
+          #geom_point(aes(color = chr)) +
+          geom_point(aes(color = group)) +
+          #scale_color_manual(values = rep(col, chrNum/2), guide = F) +
+          scale_color_manual(values = col, guide = F) +
           theme_bw() + 
           geom_text(data = data.frame(text = 1:chrNum, x = xlab.pos), aes(x = x, y = 0, label = text), size = 3)+
           theme(panel.grid.major=element_blank(), 
@@ -96,7 +98,7 @@ plotManhattan <- function(pvals, col=c("black", "red"), title="", highlight=NA, 
           labs(title = title) + 
           xlab("chromosomes") + 
           ylab(bquote(-log[10]*italic(P)*"-value")) +
-          coord_cartesian(ylim=c(-2, 70)) +
+          coord_cartesian(ylim=c(-2, ylimit)) +
           geom_hline(aes(yintercept=8), color=col2inv(col[2]))
       }else{
         ggplot(pvals, aes(x = pos, y = -log10(pval))) + 

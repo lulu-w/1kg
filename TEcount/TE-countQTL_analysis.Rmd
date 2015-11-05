@@ -20,7 +20,7 @@ names(c5) = c("African", "American", "Asian", "European", "Indian")
 ```
 
 
-```{r Heterozygosity, resutls = 'hide', fig.height=3, fig.width=3}
+```{r}
 # Sample population info
 sample_info=read.table("./analysis_input/sampleInfo.txt", header=T)
 sample_info_pop = split(sample_info, f=sample_info$group)
@@ -38,7 +38,29 @@ snpCounts=colSums(snpCounts)
 # TE count
 geneExp = read.table("./abilbeast_input/presenceExp.txt", header = T, stringsAsFactors = F)
 pop_geneExp = lapply(pop_individuals, function(x) geneExp[, c("id", x)] )
+```
 
+
+## `r nrow(sample_info)` individuals from 1KG project
+
+```{r}
+counts = unlist(table(paste0(sample_info$group, "_", sample_info$population)))
+labels = gsub("^[A-Z]+_", "", names(counts))
+cg5 = factor(gsub("_[A-Z]+$", "", names(counts)), labels = c5)
+
+
+par(cex = 1, las = 2)
+xpos = barplot(counts, ylim = c(0, 140), xlab = "Population", ylab = "Number of individuals", names.arg = labels, col = as.character(cg5), space=c(2, rep(1, 4), 2, rep(1, 5), 2, rep(1, 4), 2, rep(1, 4), 2, rep(1, 4)))
+text(xpos, counts, labels = counts, pos = 3)
+
+plot.new()
+legend("center", names(sample_info_pop), fill = c5, bty = "n", border = NA)
+#legend("topright", names(sample_info_pop), fill = c5, horiz = T, bty = "n", border = NA, cex = 0.7)
+```
+
+
+
+```{r Heterozygosity, resutls = 'hide', fig.height=3, fig.width=3}
 ########################
 # Heterozygous SNP count
 
@@ -67,40 +89,206 @@ mapply(function(pop_name, geneExp, individuals, snpCount, col){
 ```
 
 
-```{r}
-########
-# Variance explained
-########
+### GWAS analysis using Matrix eQTL
 
-# Phenotypical distance
+1. Generating population-specific variant file for AFR, EAS, EUR
 
-pheno_dist=lapply(pop_geneExp, function(d){
-    all=unlist(d[1, -1]) # All TE insertions
-    Alu=unlist(d[2, -1]) # Alu insertions
-    mall=dist(all)
-})
+```
+bcftools view All.chr.vcf.gz -S afr.txt -O z -o All.chr.afr.vcf.gz
+bcftools view All.chr.vcf.gz -S eas.txt -O z -o All.chr.eas.vcf.gz
+bcftools view All.chr.vcf.gz -S eur.txt -O z -o All.chr.eur.vcf.gz
+```
 
+2. Filter variant by MAF and variant type
 
-# Genetic relationship
+SNPs only data set with MAF > 0.05
 
+```
+bcftools filter -i 'TYPE="snp" && MAF[0]>0.05' All.chr.afr.vcf.gz -O z -o afr.snp.maf05.vcf.gz
+bcftools filter -i 'TYPE="snp" && MAF[0]>0.05' All.chr.eas.vcf.gz -O z -o eas.snp.maf05.vcf.gz
+bcftools filter -i 'TYPE="snp" && MAF[0]>0.05' All.chr.eur.vcf.gz -O z -o eur.snp.maf05.vcf.gz
+```
 
+3. Generating input **genotype** and **snploc** files for Matrix eQTL
+
+```
+# AFR
+bcftools view afr.snp.maf05.vcf.gz | grep -v '^##' | awk '{ count=gsub(",", " ", $5) } { if( count==0 ) print $0 }' | tee >(grep -v '^#' | ((printf "snp\tchr\tpos\n") && (awk 'BEGIN{OFS="\t"}{print $3,"chr"$1,$2}')) > snploc.afr) | cut -f3,10- | sed 's/0|0/0/g' | sed 's/\(0|1\)\|\(1|0\)/1/g' | sed 's/1|1/2/g'> snps.afr
+
+# EAS
+bcftools view eas.snp.maf05.vcf.gz | grep -v '^##' | awk '{ count=gsub(",", " ", $5) } { if( count==0 ) print $0 }' | tee >(grep -v '^#' | ((printf "snp\tchr\tpos\n") && (awk 'BEGIN{OFS="\t"}{print $3,"chr"$1,$2}')) > snploc.eas) | cut -f3,10- | sed 's/0|0/0/g' | sed 's/\(0|1\)\|\(1|0\)/1/g' | sed 's/1|1/2/g'> snps.eas
+
+# EUR
+bcftools view eur.snp.maf05.vcf.gz | grep -v '^##' | awk '{ count=gsub(",", " ", $5) } { if( count==0 ) print $0 }' | tee >(grep -v '^#' | ((printf "snp\tchr\tpos\n") && (awk 'BEGIN{OFS="\t"}{print $3,"chr"$1,$2}')) > snploc.eur) | cut -f3,10- | sed 's/0|0/0/g' | sed 's/\(0|1\)\|\(1|0\)/1/g' | sed 's/1|1/2/g'> snps.eur
 
 ```
 
+4. Run Matrix eQTL association analysis
+
+
+
+```{r}
+# The geneExp_AFR.txt, geneExp_EAS.txt, geneExp_EUR.txt, covariates_AFR.txt..ect. are matrices of TE counts sorted (columns) by individual ID while snps.afr, snps.eas, snps.eur are not sorted. Therefore, sort snps.afr, snps.eas and snps.eur by ID before running Matrix eQTL association analysis.
+
+# require(data.table)
+# # AFR
+# temp = fread("snps.afr", header = T)
+# o = order(names(temp)[2:ncol(temp)])
+# o = c(1, o+1)
+# temp = temp[, o, with = F]
+# write.table(temp, "snps.afr.sorted", quote = F, row.names = F, sep = "\t")
+# 
+# # EAS
+# temp = fread("snps.eas", header = T)
+# o = order(names(temp)[2:ncol(temp)])
+# o = c(1, o+1)
+# temp = temp[, o, with = F]
+# write.table(temp, "snps.eas.sorted", quote = F, row.names = F, sep = "\t")
+# 
+# # EUR
+# temp = fread("snps.eur", header = T)
+# o = order(names(temp)[2:ncol(temp)])
+# o = c(1, o+1)
+# temp = temp[, o, with = F]
+# write.table(temp, "snps.eur.sorted", quote = F, row.names = F, sep = "\t")
+```
+
+
+
+```{r eval = F}
+# # Run this chunk on abilbeast ONLY
+# # Run this chunck under abilbeast/......../bcf_concat
+# # source("../functions.R"); options(stringsAsFactors = FALSE)
+# 
+# # Global par
+# 
+# p.cut = 1e-2
+# popme = list()
+# pop_snploc = list()
+# 
+# # AFR
+# SNP_file_name = "snps.afr.sorted"
+# snps_location_file_name = "snploc.afr"
+# expression_file_name = "../temp/geneExp_AFR.txt"
+# gene_location_file_name = "../abilbeast_input/presenceLoc.txt"
+# covariates_file_name = "../temp/covariates_AFR.txt"
+# 
+# 
+# res = runME( SNP_file_name, 
+#      snps_location_file_name, 
+#      expression_file_name, 
+#      gene_location_file_name, 
+#      covariates_file_name, 
+#      output_file_name = "./all_out.txt", 
+#      useModel = modelLINEAR, 
+#      par.plot = 'qqplot', 
+#      verbose = F, 
+#      pvOutputThreshold = p.cut, 
+#      noFDRsaveMemory = F)
+# popme[['AFR']] = res$all$eqtls
+# pop_snploc[['AFR']] = read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+# pop_snploc[['AFR']] = pop_snploc[['AFR']][!duplicated(pop_snploc[['AFR']]$snp), ]
+# 
+# 
+# # EAS
+# SNP_file_name = "snps.eas.sorted"
+# snps_location_file_name = "snploc.eas"
+# expression_file_name = "../temp/geneExp_EAS.txt"
+# gene_location_file_name = "../abilbt_input/presenceLoc.txt"
+# covariates_file_name = "../temp/covariates_EAS.txt"
+# 
+# 
+# res = runME( SNP_file_name, 
+#      snps_location_file_name, 
+#      expression_file_name, 
+#      gene_location_file_name, 
+#      covariates_file_name, 
+#      output_file_name = "./all_out.txt", 
+#      useModel = modelLINEAR, 
+#      par.plot = 'qqplot', 
+#      verbose = F, 
+#      pvOutputThreshold = p.cut, 
+#      noFDRsaveMemory = F)
+# popme[['EAS']] = res$all$eqtls
+# pop_snploc[['EAS']] = read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+# pop_snploc[['EAS']] = pop_snploc[['EAS']][!duplicated(pop_snploc[['EAS']]$snp), ]
+# 
+# 
+# # EUR
+# SNP_file_name = "snps.eur.sorted"
+# snps_location_file_name = "snploc.eur"
+# expression_file_name = "../temp/geneExp_EUR.txt"
+# gene_location_file_name = "../abilbt_input/presenceLoc.txt"
+# covariates_file_name = "../temp/covariates_EUR.txt"
+# 
+# 
+# res = runME( SNP_file_name, 
+#      snps_location_file_name, 
+#      expression_file_name, 
+#      gene_location_file_name, 
+#      covariates_file_name, 
+#      output_file_name = "./all_out.txt", 
+#      useModel = modelLINEAR, 
+#      par.plot = 'qqplot', 
+#      verbose = F, 
+#      pvOutputThreshold = p.cut, 
+#      noFDRsaveMemory = F)
+# popme[['EUR']] = res$all$eqtls
+# pop_snploc[['EUR']] = read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+# pop_snploc[['EUR']] = pop_snploc[['EUR']][!duplicated(pop_snploc[['EUR']]$snp), ]
+# 
+# 
+#     
+# # Save Manhattan plot pvalues
+# require(dplyr)    
+# popme_pval = lapply(popme, function(d){
+#   if(is.null(d)){
+#     x = NULL
+#   }else{
+#     d = d[order(d$snps, d$pvalue), ]
+#     x = d[!duplicated(d$snps), ]
+#   }
+# })
+# 
+# 
+# for(i in 1:length(popme_pval)){
+#   colnames(popme_pval[[i]])[1] = "snp"
+#   popme_pval[[i]] = left_join(popme_pval[[i]], pop_snploc[[i]], by = "snp")
+#   popme_pval[[i]] = popme_pval[[i]][order(popme_pval[[i]]$pos), ]
+# }
+# 
+# mapply(write.table, popme_pval, 
+#        file = paste0("ChrAll", "_", names(popme_pval), ".txt"), 
+#        quote = rep(FALSE, length(popme_pval)), 
+#        row.names = rep(FALSE, length(popme_pval)), 
+#        sep = rep("\t", length(popme_pval)) )
+# 
+# 
+# # Save Q-Q plot pval
+# mapply(write.table, popme, 
+#            file = paste0("AllPvalues_", names(popme), ".txt"), 
+#            quote = rep(FALSE, length(popme)), 
+#            row.names = rep(FALSE, length(popme)), 
+#            sep = rep("\t", length(popme)) )
+```
+
+
+
+### Association Results
 
 ```{r results='hide', fig.width=4, fig.height=4}
 # AFR
 
-myQQplot("./analysis_input/chrAllPvalues_AFR_pval.txt", "./analysis_input/chrAllPvalues_AFR_Permuted_pval.txt", n_probs=100000, p_cut=0.01, col=c5[1], title=names(c5)[1])
+myQQplot("./analysis_input/AllPvalues_AFR.txt", "./analysis_input/chrAllPvalues_AFR_Permuted_pval.txt", n_probs=100000, p_cut=0.01, col=c5[1], title=names(c5)[1])
 
 
 # EAS
 
-myQQplot("./analysis_input/chrAllPvalues_EAS_pval.txt", "./analysis_input/chrAllPvalues_EAS_Permuted_pval.txt", n_probs=100000, p_cut=0.01, col=c5[3], title=paste(names(c5)[3]))
+myQQplot("./analysis_input/AllPvalues_EAS.txt", "./analysis_input/chrAllPvalues_EAS_Permuted_pval.txt", n_probs=100000, p_cut=0.01, col=c5[3], title=paste(names(c5)[3]))
 
 # EUR
 
-myQQplot("./analysis_input/chrAllPvalues_EUR_pval.txt", "./analysis_input/chrAllPvalues_EUR_Permuted_pval.txt", n_probs=100000, p_cut=0.01, col=c5[4], title=names(c5)[4])
+myQQplot("./analysis_input/AllPvalues_AFR.txt", "./analysis_input/chrAllPvalues_EUR_Permuted_pval.txt", n_probs=100000, p_cut=0.01, col=c5[4], title=names(c5)[4])
 
 ```
 
@@ -114,44 +302,41 @@ cutoff=8
 
 # AFR
 
-pvals = loadPvals("./analysis_input/chrAll_AFR_20150801_pval.txt")
-#sum(-log10(pvals$pval) > cutoff)
+pvals = loadPvals("./analysis_input/ChrAll_AFR.txt")
+#selsnps = pvals[which(-log10(pvals$pval) > cutoff),]; write.table(selsnps[, 1], "AFR_significant_snps.txt", quote = F, row.names = F, col.names = F)
+#selsnps = pvals[which(-log10(pvals$pval) > cutoff),]; write.table(selsnps[, 1], "AFR_significant_snps.txt", quote = F, row.names = F, col.names = F)
 plotManhattan(pvals, col = c("darkgrey", paste(c5[1])),title = paste(names(c5)[1], "observed"), by="none")
 par(cex=0.7)
 histLogFreq(-log10(pvals$pval), breaks=1000, col=c5[1])
 
-
 pvals = loadPvals("./analysis_input/chrAll_AFR_Permuted_pval.txt")
-#sum(-log10(pvals$pval) > cutoff)
-plotManhattan(pvals, col = c("darkgrey", paste(c5[1])),title = paste(names(c5)[1], "permuted"), by="none")
-#hist(-log10(pvals$pval), breaks=1000, border=NA, col=c5[1], xlab="-log10 P value", main="")
+plotManhattan(pvals, col = c("darkgrey", paste(c5[1])),title = paste(names(c5)[1], "permuted"), by="none", ylimit = 70)
 histLogFreq(-log10(pvals$pval), breaks=1000, col=c5[1])
 
 
 
 # EAS
 
-pvals = loadPvals("./analysis_input/chrAll_EAS_20150801_pval.txt")
+pvals = loadPvals("./analysis_input/ChrAll_EAS.txt")
 #sum(-log10(pvals$pval) > cutoff)
 plotManhattan(pvals, col = c("darkgrey", paste(c5[3])),title = paste(names(c5)[3], "observed"))
 histLogFreq(-log10(pvals$pval), breaks=1000, col=c5[3])
 
-
 pvals = loadPvals("./analysis_input/chrAll_EAS_Permuted_pval.txt")
-#sum(-log10(pvals$pval) > cutoff)
 plotManhattan(pvals, col = c("darkgrey", paste(c5[3])),title = paste(names(c5)[3], "permuted"))
 histLogFreq(-log10(pvals$pval), breaks=1000, col=c5[3])
 
+
+
 # EUR
 
-pvals = loadPvals("./analysis_input/chrAll_EUR_20150801_pval.txt")
+pvals = loadPvals("./analysis_input/ChrAll_EUR.txt")
 #sum(-log10(pvals$pval) > cutoff)
-plotManhattan(pvals, col = c("darkgrey", paste(c5[4])),title = paste(names(c5)[3], "observed"))
+plotManhattan(pvals, col = c("darkgrey", paste(c5[4])), title = paste(names(c5)[4], "observed"))
 histLogFreq(-log10(pvals$pval), breaks=1000, col=c5[4])
 
 pvals = loadPvals("./analysis_input/chrAll_EUR_Permuted_pval.txt")
-#sum(-log10(pvals$pval) > cutoff)
-plotManhattan(pvals, col = c("darkgrey", paste(c5[4])),title = paste(names(c5)[3], "permuted"))
+plotManhattan(pvals, col = c("darkgrey", paste(c5[4])),title = paste(names(c5)[4], "permuted"))
 histLogFreq(-log10(pvals$pval), breaks=1000, col=c5[4])
 
 

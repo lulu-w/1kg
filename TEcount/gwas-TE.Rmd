@@ -65,6 +65,41 @@ pop_teGeno = lapply(pop_individuals, function(d){
 
 ```
 
+### Obtaining population-specific variants data
+
+All vairants (SNPs, indels) for individuals from the AFR, EAS and EUR populations
+
+```
+bcftools view All.chr.vcf.gz -S afr.txt -O z -o All.chr.afr.vcf.gz
+bcftools view All.chr.vcf.gz -S asn.txt -O z -o All.chr.asn.vcf.gz
+bcftools view All.chr.vcf.gz -S eur.txt -O z -o All.chr.eur.vcf.gz
+```
+
+Filtering for SNPs
+
+```
+bcftools filter -i 'TYPE="snp" && MAF[0]>0.05' All.chr.afr.vcf.gz
+bcftools filter    All.chr.asn.vcf.gz
+bcftools filter    All.chr.eur.vcf.gz
+```
+
+
+### African population
+
+VCF files from 1kg project were first converted to plink format with MAF filter set to be 0.05
+
+```
+plink2 --vcf All.chr.afr.vcf.gz --maf 0.05 --recode --make-bed --out ./plink_assoc/All.chr.afr
+```
+
+
+After running association with plink2 using the following command
+
+```
+plink2 --bfile All.chr.afr --pheno ../polyTE_genotype_AFR.txt --all-pheno  --assoc --allow-no-sex --pfilter 1e-3 --out All.chr.afr
+```
+
+
 ### Asian population
 
 VCF files from 1kg project were first converted to plink format with MAF filter set to be 0.05
@@ -80,11 +115,13 @@ After running association with plink2 using the following command
 plink2 --bfile All.chr.asn --pheno ../polyTE_genotype_EAS.txt --all-pheno  --assoc --allow-no-sex --pfilter 1e-3 --out All.chr.asn
 ```
 
+
 ```{r}
 assocFiles = list.files("./bcf_concat/plink_assoc/asn/")
 assocTEnames = gsub("All.chr.asn.", "", assocFiles)
 assocTEnames = gsub(".[q]?assoc", "", assocTEnames)
 assocTEloc = teLoc[which(teLoc$ID %in% assocTEnames),]
+assocTEloc = assocTEloc[match(assocTEnames, assocTEloc$ID), ]
 assocTEloc = paste(assocTEloc$ID, "at chr", assocTEloc$CHROM, assocTEloc$POS)
 
 
@@ -102,3 +139,6 @@ mapply(function(data, title){
 }, assocFiles, assocTEloc)
 
 ```
+
+
+
