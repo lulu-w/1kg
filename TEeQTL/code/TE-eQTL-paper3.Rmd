@@ -1,0 +1,685 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE, message = FALSE, warning = FALSE)
+```
+
+---
+title: "TE eQTL Paper"
+author: "Lu Wang"
+date: "Tuesday, March 19, 2016"
+output: html_document
+---
+
+## TE-eQTL Analysis #3
+
+This code is written for re-analysis of regional associations for the best genome-wide significant TE-gene association pairs from the TEeQTL analysis results of the combined population (n = 445)
+
+```{r}
+source("function-paper2.R")
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+c3 = c("#F9A41B", "#3954A3", "grey")
+alpha = 0.5
+c3.t = c(rgb(0.98, 0.5, 0.44, alpha), rgb(0.27, 0.5, 0.71, alpha), rgb(0.75, 0.75, 0.75, alpha))
+```
+
+```{r}
+library(data.table)
+SNP_file_name = "./input/snps.txt"
+snps_location_file_name = "./input/snploc.txt"
+expression_file_name = "./input/geneExp.txt"
+gene_location_file_name = "./input/geneloc.txt"
+covariates_file_name = "./input/covariates.txt"
+
+snps <- read.table(SNP_file_name, header = T, stringsAsFactors = F)
+snploc <- read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+geneExp <- fread(expression_file_name)
+geneExp = as.data.frame(geneExp)
+geneloc <- fread(gene_location_file_name)
+geneloc =  as.data.frame(geneloc)
+covar <- read.table(covariates_file_name, header = T, stringsAsFactors = F)
+
+```
+
+
+
+### _Breakdown by Population_
+
+```{r}
+# Covariates
+pop.labs = c("GBR", "FIN", "CEU", "YRI", "TSI")
+group.labs = c("EUR", "YRI")
+rownames(covar) = covar$id
+values = grep("id", colnames(covar), invert = T)
+df <- as.data.frame(t(covar[, values]))
+par(cex = 0.7)
+counts = table(factor(df$population, levels = 1:5, labels = pop.labs))
+bp <- barplot(counts, xlab = "Population", ylab = "Number of Individuals")
+text(y= counts+5, x= bp, labels=as.numeric(counts), xpd=TRUE)
+df$group = as.factor(df$population)
+levels(df$group) = c("EUR", "EUR", "EUR", "YRI", "EUR")
+df = data.frame(sample = rownames(df), df)
+covar2 = df
+```
+
+
+
+
+### Merge European Populations
+
+```{r fig.width = 3}
+par(cex = 0.7)
+counts = table(df$group)
+bp <- barplot(counts, xlab = "Population", ylab = "Number of Individuals", col = c("steelblue", "salmon"))
+text(y= counts+10, x= bp, labels=as.numeric(counts), xpd=TRUE)
+```
+
+
+
+
+```{r breakdownTwo, results='hide'}
+sdf <- split(df, f = df$group)
+names(sdf) = group.labs
+
+pop.names = lapply(sdf, rownames)
+pop.snps = lapply(pop.names, function(x) { df = snps[, c("id", x)] } )
+```
+
+```{r results='asis'}
+require(knitr)
+
+res <- sapply(pop.snps, summaryPoly)
+res1 <- summaryPoly(snps)
+
+
+res = cbind(res, Union = res1)
+res = rbind(res, All = colSums(res))
+res = formatTable1(res)
+kable(res, format = "pandoc", caption = "Polymorphic Transposible Element Counts", padding = 2)
+```
+
+## Figure 1A. Boxplot of TE Allele Frequency
+
+
+```{r filter0af}
+require(reshape)
+require(ggplot2)
+
+af.cut = 0
+pop.snps.filtered.0 = lapply(pop.snps, filterAF, af.cut)
+snps.filtered.0 = filterAF(snps, af.cut)
+
+
+res = lapply(pop.snps.filtered.0, getAF)
+res = lapply(res, getType)
+mdf = melt(res, id.vars = c("id", "af", "type"))
+colnames(mdf) = gsub("L1", "group", colnames(mdf))
+
+res1 = getAF(snps.filtered.0)
+res1 = getType(res1)
+res1$group = "Union"
+
+df = rbind(mdf, res1)
+df$group = factor(df$group, levels = c("EUR", "YRI", "Union"))
+df$type = factor(df$type, levels = c("ALU", "L1", "SVA", "All"))
+
+#ggplot(df, aes(x = type, y = af )) + geom_boxplot(aes(fill = group)) + theme_bw() + theme(panel.grid = element_blank()) + scale_fill_manual(values = c3 ) + labs(x = "Type of TE", y = "Allele Frequency") + geom_hline(yintercept = 0.05, linetype = "dashed", col = "red")                                                                                                             
+
+#pdf("Figure1A.pdf")
+ggplot(df, aes(x = af)) + geom_density(aes(col = group)) + theme_bw() + theme(panel.grid = element_blank()) + scale_color_manual(values = c3 ) + labs(x = "Allele Frequency", y = "Density") + geom_vline(xintercept = 0.05, linetype = "dashed", col = "red") + facet_wrap( ~ type, nrow = 2) 
+#dev.off()
+
+#pdf("Figure1A-intc0.25.pdf")
+ggplot(df, aes(x = af)) + geom_density(aes(col = group)) + theme_bw() + theme(panel.grid = element_blank()) + scale_color_manual(values = c3 ) + labs(x = "Allele Frequency", y = "Density") + geom_vline(xintercept = 0.05, linetype = "dashed", col = "red") + facet_wrap( ~ type, nrow = 2) + coord_cartesian(xlim = c(0, 0.25), ylim = c(0, 15))
+#dev.off()
+
+#ggplot(df, aes(x = af)) + stat_ecdf(aes(col = group)) + theme_bw() + theme(panel.grid = element_blank()) + scale_color_manual(values = c3 ) + labs(x = "Allele Frequency", y = "Cumulative Density") + geom_vline(xintercept = 0.05, linetype = "dashed", col = "red")  + facet_wrap( ~ type, nrow = 2)        
+```
+
+
+
+## Figure 1B. Number of TE used in Analysis(AF>0.05)
+
+```{r figure1B, fig.width = 4}
+af.cut = 0.05
+pop.snps.filtered = lapply(pop.snps, filterAF, af.cut)
+snps.filtered = filterAF(snps, af.cut)
+
+
+res = lapply(pop.snps.filtered, getAF)
+res = lapply(res, getType)
+mdf = melt(res, id.vars = c("id", "af", "type"))
+colnames(mdf) = gsub("L1", "group", colnames(mdf))
+
+res1 = getAF(snps.filtered)
+res1 = getType(res1)
+res1$group = "Union"
+
+df = rbind(mdf, res1)
+df$group = factor(df$group, levels = c("EUR", "YRI", "Union"))
+df$type = factor(df$type, levels = c("ALU", "L1", "SVA", "All"))
+
+res = table(df$type, df$group)
+kable(res, format = "pandoc", caption = "Polymorphic Transposible Average Allele Frequency", padding = 2)
+
+#pdf("Figure1B.pdf")
+par(cex = 0.7)
+counts = res
+bp <- barplot(t(counts), xlab = "Type of Polymorphic TE", ylab = "Number of Polymorphic TE", col = c3 , beside = T)
+text(y= t(counts)+200, x= bp, labels=t(counts), xpd=TRUE, srt = 90)
+legend("top", legend = colnames(counts), fill = c3 )
+#dev.off()
+```
+
+
+### eQTL Analysis
+
+```{r eQTLfile, results='hide'}
+sdf = split(covar2, covar2$group)
+res <- lapply(sdf, function(x){ df = t(x)
+                                df = data.frame(id = rownames(df), df)
+                                if(x$population[1] == 4){
+                                  df["gender", ]
+                                }else{
+                                  df[c("gender", "population"), ]
+                                }})
+
+# mapply(write.table, res, file = paste0("./temp-paper/covariates", 1:2, ".txt"), quote = rep(FALSE, 2), row.names = rep(FALSE, 2), sep = rep("\t", 2) )
+
+# snps
+pop.snps.filtered$all = snps.filtered
+# mapply(write.table, pop.snps.filtered, file = paste0("./temp-paper/snps", 1:3, ".txt"), quote = rep(FALSE, 3), row.names = rep(FALSE, 3), sep = rep("\t", 3) )
+
+# snploc
+pop.snp.names = lapply(pop.snps.filtered, function(x) x$id )
+pop.snploc = lapply(pop.snp.names, function(x){ df = snploc
+                                            rownames(df) = snploc$snp
+                                            df[x, ]})
+# mapply(write.table, pop.snploc, file = paste0("./temp-paper/snploc", 1:3, ".txt"), quote = rep(FALSE, 3), row.names = rep(FALSE, 3), sep = rep("\t", 3) )
+
+# Expression
+pop.names = lapply(sdf, rownames)
+pop.geneExp = lapply(pop.names, function(x) geneExp[, c("id", x)] )
+# mapply(write.table, pop.geneExp, file = paste0("./temp-paper/geneExp", 1:2, ".txt"), quote = rep(FALSE, 2), row.names = rep(FALSE, 2), sep = rep("\t", 2) )
+```
+
+```{r runMatrixEQTL, results ='hide'}
+# Global par
+
+p.cut = 1e-2
+cisDist = 1e6
+
+# all Population
+
+SNP_file_name = "./temp-paper/snps3.txt"
+snps_location_file_name = "./temp-paper/snploc3.txt"
+
+
+meq.all <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "./3.all_out.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+
+```
+
+```{r}
+############################
+#
+# Addressing Review 1 Comment: 
+#
+# The most problematic aspect is that they analyzed the 
+# effect of the ~16000 TEs in isolation, implicitly assuming independence from other 
+# nearby variants. It is likely that many of the associations they report are due to 
+# variants in linkage disequilibrium (LD) with the TEs. Correcting for such effects 
+# is fairly standard in eQTL analyses. Usually this is done by permuting the expression 
+# vector to build a null distribution of association p-values 
+#
+############################
+
+
+
+#############################
+# Run Only Once
+#
+# Permute the expression vector
+#
+# set.seed(12345)
+# geneExpPermuted = geneExp
+# newColNames = c("id", sample(colnames(geneExpPermuted[-1]), replace = F))
+# geneExpPermuted = geneExpPermuted[, newColNames]
+# write.table(geneExpPermuted, "./temp-paper/all.permuted.geneExp", quote = F, row.names = F, sep = "\t")
+##############################
+
+expression_file_name = "./temp-paper/all.permuted.geneExp"
+SNP_file_name = "./temp-paper/snps3.txt"
+snps_location_file_name = "./temp-paper/snploc3.txt"
+
+
+meq.all.permuted <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "./3.all_out.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+
+###############################
+#
+# Compare QQ plot of the observed p-values vs null model p-values
+#
+
+# write.table(meq.all$all$eqtls, "./temp-paper/all.pvals", quote = F, row.names = F, sep = "\t")
+# write.table(meq.all.permuted$all$eqtls, "./temp-paper/all.permuted.pvals", quote = F, row.names = F, sep = "\t")
+# myMEQQplot("./temp-paper/all.pvals", "./temp-paper/all.permuted.pvals", n_probs=100000, p_cut=0.01, col="blue", title="All")
+
+# pdf("QQ-plot-All-vs-permuted.pdf", height = 4.5, width = 4, useDingbats = T)
+plot(meq.all, ylim = c(0, 76))
+plot(meq.all.permuted, ylim = c(0, 76))
+# dev.off()
+
+```
+
+```{r EURandYRI}
+# EUR
+
+SNP_file_name = "./temp-paper/snps1.txt"
+snps_location_file_name = "./temp-paper/snploc1.txt"
+expression_file_name = "./temp-paper/geneExp1.txt"
+covariates_file_name = "./temp-paper/covariates1.txt"
+
+meq.eur <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "1.all_out.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+
+# YRI
+
+SNP_file_name = "./temp-paper/snps2.txt"
+snps_location_file_name = "./temp-paper/snploc2.txt"
+expression_file_name = "./temp-paper/geneExp2.txt"
+covariates_file_name = "./temp-paper/covariates2.txt"
+
+meq.yri <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "2.all_out.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+```
+
+
+### Q-Q plots
+
+```{r}
+# print("EUR")
+# plot(meq.eur)
+# # plot(me_ct.eur)
+# 
+# pdf("eur.p0.01.pdf")
+# plot(meq.eur)
+# dev.off()
+# 
+# print("YRI")
+# plot(meq.yri)
+# # plot(me_ct.yri)
+# 
+# pdf("yri.p0.01.pdf")
+# plot(meq.yri)
+# dev.off()
+```
+
+## Figure 2. Table
+
+#### Number of Identified Transposible Element (TE) eQTLs
+
+
+```{r}
+require(VennDiagram)
+p.cut = 1e-2
+fdr.cut = 0.05
+cisDist = 1e6
+
+snps_location_file_name = "./input/snploc.txt"
+snploc = read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+
+# Apply FDR filter
+
+meqs = list(EUR = meq.eur$all$eqtls, YRI = meq.yri$all$eqtls, geuvadis = meq.all$all$eqtls)
+meqs.filtered = lapply(meqs, filterEQTL, p.cut = p.cut, fdr.cut = fdr.cut)
+meqs.filtered = lapply(meqs.filtered, function(d, snploc, geneloc){
+    res = merge(d, snploc, by.x = "snps", by.y = "snp")
+    res = merge(res, geneloc, by.x = "gene", by.y = "id")
+    res$eqtl.type = ifelse(res$chr.x != res$chr.y, "trans", ifelse(res$pos >= res$s1-cisDist & res$pos <= res$s2+cisDist, "cis", "trans"))
+    return(res)
+}, snploc = snploc, geneloc = geneloc)
+meqs.filtered = lapply(meqs.filtered, attachGeneNames)
+meqs.filtered.best = lapply(meqs.filtered, function(d){
+    d = d[order(d$snps, d$pvalue), ]
+    d = d[!duplicated(d$snps), ]
+    d = d[order(d$pvalue), ]
+})
+
+# mapply(write.csv, meqs.filtered, paste0(names(meqs.filtered), "-significant-eqtls.csv"), quote = F, row.names = F)
+# mapply(write.csv, meqs.filtered.best, paste0(names(meqs.filtered.best), "-best-eqtls.csv"), quote = F, row.names = F)
+
+# # Venn diagram
+# vd = lapply(meqs.filtered, function(d){ paste0(d$gene, "_", d$snps) })
+# venn.diagram(vd, "eqtl.venn.diagram.png", imagetype = "png", fill = c3, height = 1500, width = 1500)
+
+
+# Detailed breakdown/summary
+
+meqs.filtered.summary = lapply(meqs.filtered, function(d){
+    gene = d[!duplicated(d$gene), c(1, 7, 13)]
+    res = as.matrix(table(d$snp.type, d$eqtl.type))
+    res = cbind(res, all = rowSums(res))
+    res = rbind(res, all = colSums(res))
+    res = rbind(res, gene = rep(nrow(gene), ncol(res)))
+})
+
+meqs.filtered.best.summary = lapply(meqs.filtered.best, function(d){
+    gene = d[!duplicated(d$gene), c(1, 7, 13)]
+    res = as.matrix(table(d$snp.type, d$eqtl.type))
+    res = cbind(res, all = rowSums(res))
+    res = rbind(res, all = colSums(res))
+    res = rbind(res, gene = rep(nrow(gene), ncol(res)))
+})
+
+
+c1 = c(Alu_all = sum(meqs.filtered.summary$YRI[1, ]), meqs.filtered.summary$YRI[1, ], L1_all = sum(meqs.filtered.summary$YRI[2, ]), meqs.filtered.summary$YRI[2, ], SVA_all = sum(meqs.filtered.summary$YRI[3, ]), meqs.filtered.summary$YRI[3, ], All_TE_all = sum(unlist( table(meqs.filtered$YRI$eqtl.type))), unlist( table(meqs.filtered$YRI$eqtl.type)), Gene = sum(!duplicated(meqs.filtered$YRI$gene)))
+
+c2 = c(Alu_all = sum(meqs.filtered.summary$EUR[1, ]), meqs.filtered.summary$EUR[1, ], L1_all = sum(meqs.filtered.summary$EUR[2, ]), meqs.filtered.summary$EUR[2, ], SVA_all = sum(meqs.filtered.summary$EUR[3, ]), meqs.filtered.summary$EUR[3, ], All_TE_all = sum(unlist( table(meqs.filtered$EUR$eqtl.type))), unlist( table(meqs.filtered$EUR$eqtl.type)), Gene = sum(!duplicated(meqs.filtered$EUR$gene)))
+
+df = cbind(African = c1, European = c2)
+# write.csv(df, "./temp-paper/Table1.csv", quote = F)
+
+kable(df, format = "pandoc", caption = "Number of Identified Transposible Element (TE) eQTLs", padding = 2)
+
+```
+
+### Regional Associations
+
+**Regional association** analysis is first performed to check for each eTE, is there any SNPs with in the same LD block which has strong association with the same gene.
+
+**1. Calculate SNPs that are in LD with eTEs**
+
+```{r}
+spacer = 5e5
+
+###########################
+# Generate TE loci file
+
+te.loci = lapply(meqs.filtered.best, function(d, spacer){
+    d = d[!duplicated(d$snps), ]
+    d = d[, c(2, 8, 9)]
+    d[,2] = gsub("^chr", "", d[, 2])
+    d$start = d$pos - spacer
+    d$end = d$pos + spacer
+    d = d[order(d[ ,2], d[ ,3]), ]
+}, spacer = spacer)
+
+
+# ###########################
+# # Generate old polyTE ID to new polyTE ID mapping
+# 
+# require(data.table)
+# newLoc = fread("./input/All.chr.TE.TEloc.txt", skip=T)
+# newLoc$CHROM = paste0("chr", newLoc$CHROM)
+# newLoc[, join:=paste0(newLoc$CHR, "_", newLoc$POS)]
+# snploc$new = paste0(snploc$chr, "_", snploc$pos)
+# old2NewMapping = merge(snploc, newLoc, by.x="new", by.y="join")
+# old2NewMapping = old2NewMapping[!duplicated(old2NewMapping$new), ]
+# old2NewMapping = old2NewMapping[, c(2, 7, 3:4)]
+# colnames(old2NewMapping) = c("old", "new", "chr", "pos")
+# write.table(old2NewMapping, "./temp-paper/TE-old2NewMapping.txt", row.names = F, quote = F)
+
+
+##########################
+# Convert old polyTE ID to new polyTE ID
+old2NewMapping = read.table("./temp-paper/TE-old2NewMapping.txt", header = T)
+
+te.loci = lapply(te.loci, function(d, old2NewMapping){
+    res = old2NewMapping[which(old2NewMapping$old %in% d$snps), ]
+    res$new
+}, old2NewMapping)
+
+# mapply(write.table, te.loci, paste0("./temp-paper/", names(te.loci), ".eTE.txt"), row.names = F, col.names = F, quote = F)
+```
+
+
+The `geuvadis.eTE.txt` file, which is a list of new polyTE IDs, was then used to estimate the LD structure around eTE loci using `GCTA`.
+
+```
+# lwang336@biojordan:~/workdir/1kg/v5a_analysis
+# geuvadis
+gcta64  --bfile geuvadis.plink2  --ld geuvadis.eTE.txt  --ld-wind 5000  --ld-sig 0.05  --out geuvadis.eTE.ld
+```
+
+**2. Prepare eTE LD structure to generate SNP genotypes for regional association**
+
+```{r}
+ldData = read.table("./temp-paper/geuvadis.eTE.ld.rsq.ld", header = T)
+ldData = merge(ldData, old2NewMapping, by.x = "target_SNP", by.y = "new")
+ldData$chr = gsub("chr", "", ldData$chr)
+ldData$start = ldData$pos - ldData$L_region
+ldData$end = ldData$pos + ldData$R_region
+ldData = ldData[,12:16]
+write.table(ldData, "./temp-paper/geuvadis.te.loci.txt", row.names = F, quote = F)
+```
+
+
+
+```
+# Generate regional SNP+TE loci and genotype data
+
+# lwang336@bioabilcompute:~/workdir/1kg/snps
+
+mv EUR.individuals.txt individuals.txt
+../code/te_loci.sh EUR.te.loci.txt
+rm individuals.txt
+mv YRI.individuals.txt individuals.txt
+../code/te_loci.sh YRI.te.loci.txt
+rm individuals.txt
+```
+
+```{r}
+## Re-generate the ID list of 445 individuals
+# write.table(covar2$sample, "individuals.txt", col.names = F, row.names = F, quote = F)
+```
+
+Upload the individuals.txt to server.
+
+```
+# lwang336@bioabilcompute:~/workdir/1kg/snps
+
+
+rm -r genotype; mkdir genotype; rm -r multiallelic; mkdir multiallelic; rm -r snploc; mkdir snploc;
+
+### 445 Individuals
+../code/te_loci.sh All.te.loci.txt
+```
+
+Current version "_v5a" of the 1kg vcf data has changed the TE names from "ALU_umary_ALU_XXXX" to "evsXXXX", so the `te_loci.sh` wrapper did not extract the location and genotypes for TEs which are within 1MB of the TEs of interest. Therefore, the regional TEs are appended back to the location and genotype files for the regional SNPs.
+
+
+```{r}
+#######################################
+## Appending TE location and genotypes
+##
+#
+# Appending data to files, run only once!!
+#
+#########################################
+
+# # All
+# 
+# res = apply(te.loci[['All']], 1, function(d, snploc, snps){
+#   te = d[1]
+#   chr = paste0("chr", d[2])
+#   start = as.numeric(d[4])
+#   end = as.numeric(d[5])
+# 
+#   add.teloc = snploc[which(snploc$chr == chr & snploc$pos > start & snploc$pos < end), ]
+#   write.table(add.teloc, paste0("./regionalAssociation/All.te.loc/snploc/", te, ".snploc"), col.names = F, row.names = F, sep = "\t", append = T, quote = F)
+#   add.tegenotype = snps[which(snps$id %in% add.teloc$snp), ]
+#   write.table(add.tegenotype, paste0("./regionalAssociation/All.te.loc/genotype/", te, ".genotype"), col.names = F, row.names = F, sep = "\t", append = T, quote = F)
+# }, snploc = snploc, snps = snps)
+
+
+```
+
+
+
+```{r}
+###########################
+# Generate regional gene loci and expression data
+
+## Keep only the best gene-TE associations
+meqs.filtered.best = lapply(meqs.filtered, function(d){
+    d = d[order(d$snps, d$pvalue), ]
+    d = d[!duplicated(d$snps), ]
+})
+
+# EUR
+
+expression_file_name = "./temp-paper/geneExp1.txt"
+eur.expression = fread(expression_file_name)
+eur.expression = as.data.frame(eur.expression)
+eur.expression = eur.expression[which(eur.expression$id %in% meqs.filtered.best$EUR$gene ), ]
+eur.geneloc = geneloc[which(geneloc$id %in% eur.expression$id), ]
+for(i in 1:nrow(eur.expression)){
+  write.table(eur.expression[i, ], paste0("./regionalAssociation/EUR.te.loc/EUR.geneExp/", eur.expression[i, 1], ".geneExp"), row.names = F, quote = F, sep = "\t")
+  write.table(eur.geneloc[i, ], paste0("./regionalAssociation/EUR.te.loc/EUR.geneloc/", eur.geneloc[i, 1], ".geneloc"), row.names = F, quote = F, sep = "\t")
+}
+
+
+# YRI
+
+expression_file_name = "./temp-paper/geneExp2.txt"
+yri.expression = fread(expression_file_name)
+yri.expression = as.data.frame(yri.expression)
+yri.expression = yri.expression[which(yri.expression$id %in% meqs.filtered.best$YRI$gene ), ]
+yri.geneloc = geneloc[which(geneloc$id %in% yri.expression$id), ]
+for(i in 1:nrow(yri.expression)){
+  write.table(yri.expression[i, ], paste0("./regionalAssociation/YRI.te.loc/YRI.geneExp/", yri.expression[i, 1], ".geneExp"), row.names = F, quote = F, sep = "\t")
+  write.table(yri.geneloc[i, ], paste0("./regionalAssociation/YRI.te.loc/YRI.geneloc/", yri.geneloc[i, 1], ".geneloc"), row.names = F, quote = F, sep = "\t")
+}
+
+
+# All
+
+all.expression = geneExp[which(geneExp$id %in% meqs.filtered.best$All$gene ), ]
+all.geneloc = geneloc[which(geneloc$id %in% all.expression$id), ]
+for(i in 1:nrow(all.expression)){
+  write.table(all.expression[i, ], paste0("./regionalAssociation/All.te.loc/geneExp/", all.expression[i, 1], ".geneExp"), row.names = F, quote = F, sep = "\t")
+  write.table(all.geneloc[i, ], paste0("./regionalAssociation/All.te.loc/geneloc/", all.geneloc[i, 1], ".geneloc"), row.names = F, quote = F, sep = "\t")
+}
+```
+
+
+```{r}
+regional.meq = list()
+regional.meq.res = list()
+regional.best.res = list()
+
+p.cut = 0.01
+
+######################################
+# 100+ regional eQTL association runs
+#
+
+# EUR
+
+popName = "EUR"
+regional.meq[[popName]] = list()
+for(i in 1:nrow(meqs.filtered.best[[popName]])){
+    gene = meqs.filtered.best[[popName]][i, 1]
+    te = meqs.filtered.best[[popName]][i, 2]
+    SNP_file_name = paste0("./regionalAssociation/", popName, ".te.loc/", popName, ".genotype/", te, ".genotype")
+    snps_location_file_name = paste0("./regionalAssociation/", popName, ".te.loc/", popName, ".snploc/", te, ".snploc")
+    expression_file_name = paste0("./regionalAssociation/", popName, ".te.loc/", popName, ".geneExp/", gene, ".geneExp")
+    gene_location_file_name = paste0("./regionalAssociation/", popName, ".te.loc/", popName, ".geneloc/", gene, ".geneloc")
+    covariates_file_name = "./temp-paper/covariates1.txt"
+    regional.meq[[popName]][[i]] = runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "./3.all_out.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+  regional.meq[[popName]][[i]] = regional.meq[[popName]][[i]]$all$eqtls
+}
+
+regional.meq.res[[popName]] = lapply(regional.meq[[popName]], function(d){
+    if(length(grep("ALU|L1|SVA", d[1, ], perl = T))>0){
+        return(d)
+    }else{
+        return()
+    }
+})
+
+regional.meq.res[[popName]] = regional.meq.res[[popName]][!sapply(regional.meq.res[[popName]], is.null)]
+regional.meq.res[[popName]] = lapply(regional.meq.res[[popName]], function(d){
+    d = attachGeneNames(d)
+})
+regional.best.res[[popName]] = lapply(regional.meq.res[[popName]], head, n = 1)
+regional.best.res[[popName]] = do.call(rbind, regional.best.res[[popName]])
+
+
+
+
+# YRI
+
+popName = "YRI"
+regional.meq[[popName]] = list()
+for(i in 1:nrow(meqs.filtered.best[[popName]])){
+    gene = meqs.filtered.best[[popName]][i, 1]
+    te = meqs.filtered.best[[popName]][i, 2]
+    SNP_file_name = paste0("./regionalAssociation/", popName, ".te.loc/", popName, ".genotype/", te, ".genotype")
+    snps_location_file_name = paste0("./regionalAssociation/", popName, ".te.loc/", popName, ".snploc/", te, ".snploc")
+    expression_file_name = paste0("./regionalAssociation/", popName, ".te.loc/", popName, ".geneExp/", gene, ".geneExp")
+    gene_location_file_name = paste0("./regionalAssociation/", popName, ".te.loc/", popName, ".geneloc/", gene, ".geneloc")
+    covariates_file_name = "./temp-paper/covariates2.txt"
+    regional.meq[[popName]][[i]] = runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "./3.all_out.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+  regional.meq[[popName]][[i]] = regional.meq[[popName]][[i]]$all$eqtls
+}
+
+regional.meq.res[[popName]] = lapply(regional.meq[[popName]], function(d){
+    if(length(grep("ALU|L1|SVA", d[1, ], perl = T))>0){
+        return(d)
+    }else{
+        return()
+    }
+})
+
+regional.meq.res[[popName]] = regional.meq.res[[popName]][!sapply(regional.meq.res[[popName]], is.null)]
+regional.meq.res[[popName]] = lapply(regional.meq.res[[popName]], function(d){
+    d = attachGeneNames(d)
+})
+regional.best.res[[popName]] = lapply(regional.meq.res[[popName]], head, n = 1)
+regional.best.res[[popName]] = do.call(rbind, regional.best.res[[popName]])
+
+
+
+# All
+
+popName = "All"
+regional.meq[[popName]] = list()
+for(i in 1:nrow(meqs.filtered.best[[popName]])){
+    gene = meqs.filtered.best[[popName]][i, 1]
+    te = meqs.filtered.best[[popName]][i, 2]
+    SNP_file_name = paste0("./regionalAssociation/", popName, ".te.loc/genotype/", te, ".genotype")
+    snps_location_file_name = paste0("./regionalAssociation/", popName, ".te.loc/snploc/", te, ".snploc")
+    expression_file_name = paste0("./regionalAssociation/", popName, ".te.loc/geneExp/", gene, ".geneExp")
+    gene_location_file_name = paste0("./regionalAssociation/", popName, ".te.loc/geneloc/", gene, ".geneloc")
+    covariates_file_name = "./input/covariates.txt"
+    regional.meq[[popName]][[i]] = runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "./3.all_out.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+  regional.meq[[popName]][[i]] = regional.meq[[popName]][[i]]$all$eqtls
+}
+
+regional.meq.res[[popName]] = lapply(regional.meq[[popName]], function(d){
+    d = d[grep("^esv", d$snps, invert = T), ] # Remove the v5a version repeated "esv" entries
+    if(length(grep("ALU|L1|SVA", d[1, ], perl = T))>0){
+        return(d)
+    }else{
+        return()
+    }
+})
+
+regional.meq.res[[popName]] = regional.meq.res[[popName]][!sapply(regional.meq.res[[popName]], is.null)]
+regional.meq.res[[popName]] = lapply(regional.meq.res[[popName]], function(d){
+    d = attachGeneNames(d)
+})
+regional.best.res[[popName]] = lapply(regional.meq.res[[popName]], head, n = 1)
+regional.best.res[[popName]] = do.call(rbind, regional.best.res[[popName]])
+
+
+
+
+# Write to files
+regional.best.res = lapply(regional.best.res, function(d){
+    d = d[order(d$pvalue), ]
+})
+mapply(write.csv, regional.best.res, paste0(names(regional.best.res), ".regional_best_TEeQTL.csv"), quote = F, row.names = F)
+
+```
+
+
+

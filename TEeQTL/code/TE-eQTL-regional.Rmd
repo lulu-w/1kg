@@ -1,0 +1,83 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE, message = FALSE, warning = FALSE)
+```
+
+---
+title: "Regional SNP-Expression Association"
+author: "Lu Wang"
+output: html_document
+---
+
+
+```{r}
+source("function-paper.R")
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+c3 = c("salmon", "steelblue", "grey")
+alpha = 0.5
+c3.t = c(rgb(0.98, 0.5, 0.44, alpha), rgb(0.27, 0.5, 0.71, alpha), rgb(0.75, 0.75, 0.75, alpha))
+```
+
+
+## Locus 1: chr6:31,485,154 - 34,096,890
+
+```{r regionalAssociation}
+SNP_file_name = "./regionalAssociation/loc1/regsnps.txt"
+snps_location_file_name = "./regionalAssociation/loc1//regsnploc.txt"
+expression_file_name =  "./regionalAssociation/loc1//reggeneExp.txt"
+gene_location_file_name = "./regionalAssociation/loc1//reggeneloc.txt"
+covariates_file_name = "./input/covariates.txt"
+
+p.cut = 1e-2
+fdr.cut = 0.05
+````
+
+```{r IDmapping, cache=T}
+id.map = read.csv("./input/ensemblGeneToGeneName-20150206.csv")
+id.map = id.map[, c("name", "gene")]
+id.map.u = id.map[!duplicated(id.map$gene), ]
+```
+
+
+```{r loc1, results="hide"}
+loc1.meq.all <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "./output/loc1.regionalAssociation.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+```
+
+
+```{r fig.width=5}
+plot(loc1.meq.all)
+```
+
+
+```{r}
+# Covariates
+covar <- read.table(covariates_file_name, header = T, stringsAsFactors = F)
+pop.labs = c("GBR", "FIN", "CEU", "YRI", "TSI")
+group.labs = c("EUR", "YRI")
+rownames(covar) = covar$id
+values = grep("id", colnames(covar), invert = T)
+df <- as.data.frame(t(covar[, values]))
+df$group = as.factor(df$population)
+levels(df$group) = c("EUR", "EUR", "EUR", "YRI", "EUR")
+covar2 = data.frame(sample = rownames(df), df)
+```
+
+
+```{r loc1Results}
+regsnps <- read.table(SNP_file_name, header = T, stringsAsFactors = F)
+
+# Chi-square test for skewness of SNP presence in EUR vs YRI
+chi.test.p <- apply(valCols(regsnps), 1, myChisq, expected = covar2)
+chi.test.df <- data.frame(snps = regsnps$ID, chisq.p = chi.test.p)
+chi.test.q <- p.adjust(chi.test.p, method = "BH")
+chi.test.df$chisq.q = chi.test.q
+
+loc1.meq.eqtls <- loc1.meq.all$all$eqtls
+loc1.meq.eqtls <- merge(loc1.meq.eqtls, chi.test.df, by.x = "snps", by.y = "snps")
+
+loc1.meq.eqtls = merge(loc1.meq.eqtls, id.map.u, by.x = "gene", by.y = "gene")
+loc1.meq.eqtls = loc1.meq.eqtls[order(loc1.meq.eqtls$chisq.q, loc1.meq.eqtls$pvalue), ]
+```
+
+

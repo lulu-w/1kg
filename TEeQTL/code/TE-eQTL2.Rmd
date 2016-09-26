@@ -1,0 +1,317 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE)
+```
+
+---
+title: "TE eQTL"
+author: "Lu Wang"
+date: "Tuesday, December 09, 2014"
+output: html_document
+---
+
+## TE-Gene Association on All Pairs
+
+```{r cache = TRUE}
+SNP_file_name = "./input/snps.txt"
+snps_location_file_name = "./input/snploc.txt"
+expression_file_name = "./input/geneExp.txt"
+gene_location_file_name = "./input/geneloc.txt"
+covariates_file_name = "./input/covariates.txt"
+
+snps <- read.table(SNP_file_name, header = T, stringsAsFactors = F)
+snploc <- read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+geneExp <- read.table(expression_file_name, header = T, stringsAsFactors = F)
+geneloc <- read.table(gene_location_file_name, header = T, stringsAsFactors = F)
+covar <- read.table(covariates_file_name, header = T, stringsAsFactors = F)
+```
+
+```{r runMEh, cache = FALSE, results='hide', message = FALSE}
+set.seed(1)
+source("function.R")
+
+meh <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, verbose = FALSE)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meh)
+```
+
+```{r runMEqq, cache = FALSE, results='hide'}
+meq <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, "qqplot", verbose = F)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meq)
+```
+
+## Distribution of Allele Frequency
+
+```{r cache = TRUE}
+msnps <- as.matrix(snps[, grep("id", names(snps), invert = T)])
+rownames(msnps) <- as.character(snps[, grep("id", names(snps))])
+
+res <- apply(msnps, 1, table)
+res1 <- sapply(res, getAF)
+```
+
+```{r}
+
+hist(res1, breaks = 100, col = "steelblue", border = NA, main = "", xlab = "Allele Frequency")
+af.df <- data.frame(names(res1), res1)
+names(af.df) = c("id", "af")
+af.df$id = as.character(af.df$id)
+rm(res1)
+```
+
+
+```{r filterAF, message = FALSE}
+library(dplyr)
+af.cut = 0.01
+keep = which(af.df$af > af.cut)
+res = snps[keep, ]
+res1 = snploc[keep, ]
+write.table(res, "./input/temp.snps", quote = F, row.names = F, col.names = F, sep = "\t")
+write.table(res1, "./input/temp.snploc", quote = F, row.names = F, col.names = F, sep = "\t")
+```
+
+## TE-Gene Association after Applying AF cutoff = `r af.cut`
+
+```{r cache = FALSE, results='hide'}
+SNP_file_name = "./input/temp.snps"
+snps_location_file_name = "./input/temp.snploc"
+
+meh <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, verbose = F)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meh)
+```
+
+```{r cache = FALSE, results='hide'}
+meq <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, "qqplot", verbose = F)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meq)
+```
+
+
+
+
+
+```{r}
+library(dplyr)
+af.cut = 0.05
+keep = which(af.df$af > af.cut)
+res = snps[keep, ]
+res1 = snploc[keep, ]
+write.table(res, "./input/temp.snps", quote = F, row.names = F, col.names = F, sep = "\t")
+write.table(res1, "./input/temp.snploc", quote = F, row.names = F, col.names = F, sep = "\t")
+```
+
+## TE-Gene Association after Applying AF cutoff = `r af.cut`
+
+```{r cache = FALSE, results='hide'}
+SNP_file_name = "./input/temp.snps"
+snps_location_file_name = "./input/temp.snploc"
+
+meh <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, verbose = F)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meh)
+```
+
+```{r cache = FALSE, results='hide'}
+meq <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, "qqplot", verbose = F)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meq)
+```
+
+
+
+
+```{r}
+library(dplyr)
+af.cut = 0.1
+keep = which(af.df$af > af.cut)
+res = snps[keep, ]
+res1 = snploc[keep, ]
+write.table(res, "./input/temp.snps", quote = F, row.names = F, col.names = F, sep = "\t")
+write.table(res1, "./input/temp.snploc", quote = F, row.names = F, col.names = F, sep = "\t")
+```
+
+## TE-Gene Association after Applying AF cutoff = `r af.cut`
+
+```{r cache = FALSE, results='hide'}
+SNP_file_name = "./input/temp.snps"
+snps_location_file_name = "./input/temp.snploc"
+
+
+meh <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, verbose = F)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meh)
+```
+
+```{r cache = FALSE, results='hide'}
+meq <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, useModel = modelLINEAR, "qqplot", verbose = F)
+```
+
+```{r}
+par(cex = 0.7)
+plot(meq)
+```
+
+# Breakdown by Population
+
+```{r}
+# Covariates
+pop.names = c("GBR", "FIN", "CEU", "YRI", "TSI")
+rownames(covar) = covar$id
+df <- as.data.frame(t(covar[, grep("id", colnames(covar), invert = T)]))
+barplot(table(factor(df$population, levels = 1:5, labels = pop.names)), xlab = "Population", ylab = "Number of Individuals")
+```
+
+```{r breakdown, results='hide'}
+sdf <- split(df, f = df$population)
+res <- lapply(sdf, function(x){ df = t(x); df = data.frame(id = rownames(df), df); df = df["gender", ]} )
+mapply(write.table, res, file = paste0("./temp/covariates", 1:5, ".txt"), quote = rep(FALSE, 5), row.names = rep(FALSE, 5), sep = rep("\t", 5) )
+pop.covar = res
+
+# snps
+pop.names = lapply(sdf, rownames)
+pop.snps = lapply(pop.names, function(x) { df = snps[, c("id", x)] } )
+mapply(write.table, pop.snps, file = paste0("./temp/snps", 1:5, ".txt"), quote = rep(FALSE, 5), row.names = rep(FALSE, 5), sep = rep("\t", 5) )
+
+# Expression
+pop.geneExp = lapply(pop.names, function(x) { df = geneExp[, c("id", x)] } )
+mapply(write.table, pop.geneExp, file = paste0("./temp/geneExp", 1:5, ".txt"), quote = rep(FALSE, 5), row.names = rep(FALSE, 5), sep = rep("\t", 5) )
+
+# geneloc
+pop.genes = lapply(pop.geneExp, function(x) as.character(x$id))
+rownames(geneloc) = geneloc$id
+pop.geneloc = lapply(pop.genes, function(x) { df = geneloc[x, ] } )
+mapply(write.table, pop.geneloc, file = paste0("./temp/geneloc", 1:5, ".txt"), quote = rep(FALSE, 5), row.names = rep(FALSE, 5), sep = rep("\t", 5) )
+```
+
+
+
+
+```{r population1, cache = TRUE, results='hide'}
+af.cut = 0.05
+
+x = 1
+pop.name = pop.names[x]
+
+res <-  runPop(x = x, af.cut = af.cut, useModel = modelLINEAR, verbose = F)
+
+```
+
+## TE-Gene Association in GBR Population with AF > `r af.cut`
+
+```{r}
+par(cex = 0.7)
+plot(res$meh)
+plot(res$meq)
+```
+
+
+
+
+
+```{r population2, cache = TRUE, results='hide'}
+af.cut = 0.05
+
+x = 2
+pop.name = pop.names[x]
+
+res <-  runPop(x = x, af.cut = af.cut, useModel = modelLINEAR, verbose = F)
+
+```
+
+## TE-Gene Association in FIN Population with AF > `r af.cut`
+
+```{r}
+par(cex = 0.7)
+plot(res$meh)
+plot(res$meq)
+```
+
+
+
+
+
+```{r population3, cache = TRUE, results='hide'}
+af.cut = 0.05
+
+x = 3
+pop.name = pop.names[x]
+
+res <-  runPop(x = x, af.cut = af.cut, useModel = modelLINEAR, verbose = F)
+
+```
+
+## TE-Gene Association in CEU Population with AF > `r af.cut`
+
+```{r}
+par(cex = 0.7)
+plot(res$meh)
+plot(res$meq)
+```
+
+
+
+
+
+
+```{r population4, cache = TRUE, results='hide'}
+af.cut = 0.05
+
+x = 4
+pop.name = pop.names[x]
+
+res <-  runPop(x = x, af.cut = af.cut, useModel = modelLINEAR, verbose = F)
+
+```
+
+## TE-Gene Association in YRI Population with AF > `r af.cut`
+
+```{r}
+par(cex = 0.7)
+plot(res$meh)
+plot(res$meq)
+```
+
+
+
+
+
+```{r population5, cache = TRUE, results='hide'}
+af.cut = 0.05
+
+x = 5
+pop.name = pop.names[x]
+
+res <-  runPop(x = x, af.cut = af.cut, useModel = modelLINEAR, verbose = F)
+
+```
+
+## TE-Gene Association in TSI Population with AF > `r af.cut`
+
+```{r}
+par(cex = 0.7)
+plot(res$meh)
+plot(res$meq)
+```

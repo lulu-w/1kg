@@ -1,0 +1,323 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE, message = FALSE, warning = FALSE)
+```
+
+---
+title: "TE eQTL Paper"
+author: "Lu Wang"
+date: "Friday, December 19, 2014"
+output: html_document
+---
+
+
+```{r}
+source("function-sum.R")
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+c3 = c("salmon", "steelblue", "grey")
+alpha = 0.5
+c3.t = c(rgb(0.98, 0.5, 0.44, alpha), rgb(0.27, 0.5, 0.71, alpha), rgb(0.75, 0.75, 0.75, alpha))
+```
+
+```{r cache = TRUE}
+SNP_file_name = "./input/snps.txt"
+snps_location_file_name = "./input/snploc.txt"
+expression_file_name = "./input/geneExp.txt"
+gene_location_file_name = "./input/geneloc.txt"
+covariates_file_name = "./input/covariates.txt"
+
+snps <- read.table(SNP_file_name, header = T, stringsAsFactors = F)
+snploc <- read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+geneExp <- read.table(expression_file_name, header = T, stringsAsFactors = F)
+geneloc <- read.table(gene_location_file_name, header = T, stringsAsFactors = F)
+covar <- read.table(covariates_file_name, header = T, stringsAsFactors = F)
+
+#normGeneExp <- read.table(normalized_expression_file_name, header = T, stringsAsFactors = F)
+```
+
+
+
+### _Breakdown by Population_
+
+```{r}
+# Covariates
+pop.labs = c("GBR", "FIN", "CEU", "YRI", "TSI")
+group.labs = c("EUR", "YRI")
+rownames(covar) = covar$id
+values = grep("id", colnames(covar), invert = T)
+df <- as.data.frame(t(covar[, values]))
+par(cex = 0.7)
+counts = table(factor(df$population, levels = 1:5, labels = pop.labs))
+bp <- barplot(counts, xlab = "Population", ylab = "Number of Individuals")
+text(y= counts+5, x= bp, labels=as.numeric(counts), xpd=TRUE)
+df$group = as.factor(df$population)
+levels(df$group) = c("EUR", "EUR", "EUR", "YRI", "EUR")
+df = data.frame(sample = rownames(df), df)
+covar2 = df
+```
+
+### Overall Population Expression Structure
+
+```{r MDSexpression, eval = F}
+#res <- fitMDS(valCols(geneExp))
+
+#pdf("mds-expression.pdf", height = 5, width = 5)
+#plotMDS(res, col = as.character(factor(covar2$group, label = c("red", "blue"))), labels = c("EUR", "YRI"))
+# Minor scaling on both axis
+# res$points = res$points/100
+#plotMDS(res, col = as.character(factor(covar2$population, label = c("darkgreen", "red", "orange", "blue", "purple"))), labels = pop.labs)
+#dev.off()
+
+```
+
+### Population Expression Difference
+
+```{r}
+# set.seed(12345)
+# 
+# library(genefilter)
+# res <- rowttests(as.matrix(valCols(geneExp)), fac = covar2$group)
+# res = cbind(name = rownames(res), res)
+# 
+# 
+# mdf = merge(geneExp, res, by.x = "id", by.y = "name")
+# mdf = mdf[order(mdf$statistic), ]
+# top.n = 20
+# mdf = mdf[(nrow(mdf)-top.n):nrow(mdf), ]
+# mdf = mdf[, covar2$sample[order(covar2$group)]]
+# 
+# 
+# mds.fit <- fitMDS(mdf)
+# 
+# #pdf("mds-diff-expression.pdf", height = 5, width = 5)
+# plotMDS(mds.fit, col = as.character(factor(sort(covar2$group), label = c("blue", "red"), levels = c("YRI", "EUR"))), labels = c("YRI", "EUR"))
+#dev.off()
+
+
+
+# mdf1 = mdf[, covar2$sample[grep("EUR", covar2$group)]]
+# mdf2 = mdf[, covar2$sample[grep("YRI", covar2$group)]]
+# mdf = mdf[order(rowSums(mdf1) - rowSums(mdf2)), ]
+
+
+# geneExp.EUR = geneExp[, covar2$sample[grep("EUR", covar2$group)]]
+# geneExp.YRI = geneExp[, covar2$sample[grep("YRI", covar2$group)]]
+# geneExp.EUR.min = apply(geneExp.EUR, 1, min)
+# geneExp.YRI.min = apply(geneExp.YRI, 1, min)
+# geneExp.EUR.max = apply(geneExp.EUR, 1, max)
+# geneExp.YRI.max = apply(geneExp.YRI, 1, max)
+
+
+
+# hmcol = colorRampPalette(c("green","green","green","green","green","green","green","green","green","green","green","green","green", "darkgreen", "black","darkred", "red", "red", "red", "red", "red", "red", "red", "red", "red", "red", "red", "red", "red"))(100)
+# 
+# #pdf("geneExp.heatmap.pdf", height = 6, width = 4)
+# plotHeatmap(mdf)
+#dev.off()
+
+```
+
+
+### Merge European Populations
+
+```{r fig.width = 3}
+par(cex = 0.7)
+counts = table(df$group)
+bp <- barplot(counts, xlab = "Population", ylab = "Number of Individuals", col = c("steelblue", "salmon"))
+text(y= counts+10, x= bp, labels=as.numeric(counts), xpd=TRUE)
+```
+
+
+```{r}
+# Chi-square test for skewness of SNP presence in EUR vs YRI
+# chi.test.p <- apply(valCols(snps), 1, myChisq, expected = covar2)
+# chi.test.df <- data.frame(snps = names(chi.test.p), chisq.p = chi.test.p)
+# chi.test.q <- p.adjust(chi.test.p, method = "BH")
+# chi.test.df$chisq.q = chi.test.q
+#myChisq(valCols(snps)[1, ], expected = covar2)
+```
+
+
+
+```{r breakdownTwo, results='hide'}
+sdf <- split(df, f = df$group)
+names(sdf) = group.labs
+
+pop.names = lapply(sdf, rownames)
+pop.snps = lapply(pop.names, function(x) { df = snps[, c("id", x)] } )
+```
+
+```{r results='asis', cache = T}
+# require(knitr)
+# 
+# res <- sapply(pop.snps, summaryPoly)
+# res1 <- summaryPoly(snps)
+# 
+# 
+# res = cbind(res, Union = res1)
+# res = rbind(res, All = colSums(res))
+# res = formatTable1(res)
+# kable(res, format = "pandoc", caption = "Polymorphic Transposible Element Counts", padding = 2)
+```
+
+## Figure 1A. Boxplot of TE Allele Frequency
+
+
+```{r filter0af}
+# require(reshape)
+# require(ggplot2)
+# 
+# af.cut = 0
+# pop.snps.filtered.0 = lapply(pop.snps, filterAF, af.cut)
+# snps.filtered.0 = filterAF(snps, af.cut)
+# 
+# 
+# res = lapply(pop.snps.filtered.0, getAF)
+# res = lapply(res, getType)
+# mdf = melt(res, id.vars = c("id", "af", "type"))
+# colnames(mdf) = gsub("L1", "group", colnames(mdf))
+# 
+# res1 = getAF(snps.filtered.0)
+# res1 = getType(res1)
+# res1$group = "Union"
+# 
+# df = rbind(mdf, res1)
+# df$group = factor(df$group, levels = c("EUR", "YRI", "Union"))
+# df$type = factor(df$type, levels = c("ALU", "L1", "SVA", "All"))
+# 
+# #ggplot(df, aes(x = type, y = af )) + geom_boxplot(aes(fill = group)) + theme_bw() + theme(panel.grid = element_blank()) + scale_fill_manual(values = c3 ) + labs(x = "Type of TE", y = "Allele Frequency") + geom_hline(yintercept = 0.05, linetype = "dashed", col = "red")                                                                                                             
+# 
+# #pdf("Figure1A.pdf")
+# ggplot(df, aes(x = af)) + geom_density(aes(col = group)) + theme_bw() + theme(panel.grid = element_blank()) + scale_color_manual(values = c3 ) + labs(x = "Allele Frequency", y = "Density") + geom_vline(xintercept = 0.05, linetype = "dashed", col = "red") + facet_wrap( ~ type, nrow = 2) 
+# #dev.off()
+# 
+# #pdf("Figure1A-intc0.25.pdf")
+# ggplot(df, aes(x = af)) + geom_density(aes(col = group)) + theme_bw() + theme(panel.grid = element_blank()) + scale_color_manual(values = c3 ) + labs(x = "Allele Frequency", y = "Density") + geom_vline(xintercept = 0.05, linetype = "dashed", col = "red") + facet_wrap( ~ type, nrow = 2) + coord_cartesian(xlim = c(0, 0.25), ylim = c(0, 15))
+# #dev.off()
+
+#ggplot(df, aes(x = af)) + stat_ecdf(aes(col = group)) + theme_bw() + theme(panel.grid = element_blank()) + scale_color_manual(values = c3 ) + labs(x = "Allele Frequency", y = "Cumulative Density") + geom_vline(xintercept = 0.05, linetype = "dashed", col = "red")  + facet_wrap( ~ type, nrow = 2)        
+```
+
+
+```{r cache = T}
+# library(VennDiagram)
+# sdf = split(mdf, f = mdf$type)
+# ssdf = lapply(sdf, function(x) {y = split(x, f = x$group); y = lapply(y, function(z) as.character(z$id))} )
+# 
+# #sapply(ssdf, function(x){ fname = tempfile(tmpdir = ".", fileext = ".tiff"); venn.diagram(x, fname , imagetype = "tiff", fill = c3[1:2], height = 1500, width = 1500 )})
+#        
+# paths = sapply(ssdf, function(x){ fname = tempfile(tmpdir = ".", fileext = ".png")
+#                           venn.diagram(x, fname , imagetype = "png", fill = c3[1:2], height = 1500, width = 1500 )
+#                           fname
+#                           })
+# paths = gsub('\\.\\\\', '', paths, perl = T)
+```
+
+
+
+
+
+## Figure 1B. Number of TE used in Analysis(AF>0.05)
+
+```{r figure1B, fig.width = 4}
+# af.cut = 0.05
+# pop.snps.filtered = lapply(pop.snps, filterAF, af.cut)
+# snps.filtered = filterAF(snps, af.cut)
+# 
+# 
+# res = lapply(pop.snps.filtered, getAF)
+# res = lapply(res, getType)
+# mdf = melt(res, id.vars = c("id", "af", "type"))
+# colnames(mdf) = gsub("L1", "group", colnames(mdf))
+# 
+# res1 = getAF(snps.filtered)
+# res1 = getType(res1)
+# res1$group = "Union"
+# 
+# df = rbind(mdf, res1)
+# df$group = factor(df$group, levels = c("EUR", "YRI", "Union"))
+# df$type = factor(df$type, levels = c("ALU", "L1", "SVA", "All"))
+# 
+# res = table(df$type, df$group)
+# kable(res, format = "pandoc", caption = "Polymorphic Transposible Average Allele Frequency", padding = 2)
+# 
+# #pdf("Figure1B.pdf")
+# par(cex = 0.7)
+# counts = res
+# bp <- barplot(t(counts), xlab = "Type of Polymorphic TE", ylab = "Number of Polymorphic TE", col = c3 , beside = T)
+# text(y= t(counts)+200, x= bp, labels=t(counts), xpd=TRUE, srt = 90)
+# legend("top", legend = colnames(counts), fill = c3 )
+#dev.off()
+```
+
+
+```{r}
+require(ggplot2)
+require(reshape)
+#snps.pres <- valCols(snps.filtered) > 0
+snps.pres <- snps[, -1] > 0
+rownames(snps.pres) <- snps[, 1]
+snps.pres <- snps.pres*1
+
+#All
+sum.geno <- colSums(snps.pres)
+
+alu <- grep("^ALU", rownames(snps.pres))
+lin <- grep("^L1", rownames(snps.pres))
+sva <- grep("^SVA", rownames(snps.pres))
+
+alu.geno <- colSums(snps.pres[alu, ])
+lin.geno <- colSums(snps.pres[lin, ])
+sva.geno <- colSums(snps.pres[sva, ])
+
+sum.pres.df <- data.frame(id = names(sum.geno), all = sum.geno, alu = alu.geno, lin = lin.geno, sva = sva.geno, group = covar2$group)
+
+mdf <- melt(sum.pres.df, id.vars = c("id", "group"), measure.vars = c("all", "alu", "lin", "sva"))
+pdf("polyTE_distribution.pdf", height = 10, width = 10)
+ggplot(mdf, aes(x = value)) + geom_density(aes(col = variable)) + facet_wrap( ~ group, nrow = 2)  + theme_bw()
+dev.off()
+
+```
+
+```{r}
+sum.pres.asExp <- t(sum.pres.df[, c("all", "alu", "lin", "sva")])
+sum.pres.asExp <- data.frame(id = rownames(sum.pres.asExp), sum.pres.asExp)
+write.table(sum.pres.asExp, "./presenceExp/presenceExp.txt", row.names = F, quote = F, sep = "\t")
+presenceLoc <- data.frame(id = sum.pres.asExp$id, chr = rep("chr1", nrow(sum.pres.asExp)), s1 = rep("1", nrow(sum.pres.asExp)), s2 = rep("10000", nrow(sum.pres.asExp)))
+write.table(presenceLoc, "./presenceExp/presenceLoc.txt", row.names = F, quote = F, sep = "\t")
+```
+
+```{r runMatrixEQTL, results ='hide', cache = F}
+# Global par
+
+p.cut = 1e-2
+cisDist = 1e6
+
+
+SNP_file_name = "./regionalAssociation/te.loc/genotype/ALU_umary_ALU_10010.genotype"
+snps_location_file_name = "./regionalAssociation/te.loc/snploc/ALU_umary_ALU_10010.snploc"
+expression_file_name = "./presenceExp/presenceExp.txt"
+gene_location_file_name = "./presenceExp/presenceLoc.txt"
+covariates_file_name = "./input/covariates.txt"
+
+
+snps <- read.table(SNP_file_name, header = T, stringsAsFactors = F)
+snploc <- read.table(snps_location_file_name, header = T, stringsAsFactors = F)
+geneExp <- read.table(expression_file_name, header = T, stringsAsFactors = F)
+geneloc <- read.table(gene_location_file_name, header = T, stringsAsFactors = F)
+covar <- read.table(covariates_file_name, header = T, stringsAsFactors = F)
+
+test <- runME( SNP_file_name, snps_location_file_name, expression_file_name, gene_location_file_name, covariates_file_name, output_file_name = "./3.all_out.txt", useModel = modelLINEAR, par.plot = 'qqplot', verbose = F, pvOutputThreshold = p.cut, noFDRsaveMemory = F)
+
+
+top.n = 50
+pdf("TE-presence.pdf")
+lapply(1:top.n, function(x) ploteqtl(test$all$eqtls[x, ], by = "group"))
+dev.off()
+# write.csv(meq.all$all$eqlts, "meq.all.csv", quote = F, row.names = F)
+# rm(me_ct.all)
+
+
+
+```
